@@ -55,6 +55,7 @@ partial class BillingForm
     private CheckBox december;
     private Button generate;
     private Button pay;
+    private Button batchPay;
     private DataGridView grid;
     private Label note;
     private DataGridViewTextBoxColumn houseColumn;
@@ -98,6 +99,7 @@ partial class BillingForm
         december = new CheckBox();
         generate = new Button();
         pay = new Button();
+        batchPay = new Button();
         grid = new DataGridView();
         note = new Label();
         houseColumn = new DataGridViewTextBoxColumn();
@@ -227,11 +229,15 @@ partial class BillingForm
         pay.Text = "Record payment";
         pay.AutoSize = true;
         pay.Click += PayClicked;
+        batchPay.Name = "batchPay";
+        batchPay.Text = "Record multiple payments...";
+        batchPay.AutoSize = true;
+        batchPay.Click += BatchPayClicked;
         toolbar.Controls.AddRange(new Control[] { yearLabel, year, allMonths, january, february, march, april, may, june, july, august, september, october, november, december });
         actions.Dock = DockStyle.Fill;
         actions.AutoScroll = true;
         actions.WrapContents = false;
-        actions.Controls.AddRange(new Control[] { generate, pay });
+        actions.Controls.AddRange(new Control[] { generate, pay, batchPay });
         grid.Dock = DockStyle.Fill;
         grid.AutoGenerateColumns = false;
         grid.ReadOnly = true;

@@ -8,6 +8,9 @@ partial class MainForm
     private Button dashboardButton;
     private Button housesButton;
     private Button billingButton;
+    private Button renovationsButton;
+    private Button expensesButton;
+    private Button accountingButton;
     private ProgressBar collectionProgress;
     private Button settingsButton;
     private Label offlineLabel;
@@ -45,6 +48,9 @@ partial class MainForm
     private void InitializeComponent()
     {
         billingButton = new Button();
+        renovationsButton = new Button();
+        expensesButton = new Button();
+        accountingButton = new Button();
         collectionProgress = new ProgressBar();
         shell = new TableLayoutPanel();
         sidebar = new TableLayoutPanel();
@@ -103,10 +109,42 @@ partial class MainForm
         billingButton.Name = "billingButton";
         billingButton.Size = new Size(185, 48);
         billingButton.TabIndex = 3;
-        billingButton.Text = "Billing && payments";
+        billingButton.Text = "▤  Billing && payments";
         billingButton.TextAlign = ContentAlignment.MiddleLeft;
         billingButton.UseVisualStyleBackColor = false;
         billingButton.Click += BillingClicked;
+        renovationsButton.Text = "⚒  Renovations";
+        renovationsButton.Dock = DockStyle.Top;
+        renovationsButton.Height = 48;
+        renovationsButton.FlatStyle = FlatStyle.Flat;
+        renovationsButton.FlatAppearance.BorderSize = 0;
+        renovationsButton.Font = new Font("Segoe UI", 11F);
+        renovationsButton.ForeColor = Color.White;
+        renovationsButton.BackColor = Color.FromArgb(25, 39, 57);
+        renovationsButton.TextAlign = ContentAlignment.MiddleLeft;
+        renovationsButton.Click += RenovationsClicked;
+        expensesButton.Name = "expensesButton";
+        expensesButton.Text = "↗  Expenses && payments";
+        expensesButton.Dock = DockStyle.Top;
+        expensesButton.Height = 48;
+        expensesButton.FlatStyle = FlatStyle.Flat;
+        expensesButton.FlatAppearance.BorderSize = 0;
+        expensesButton.Font = new Font("Segoe UI", 11F);
+        expensesButton.ForeColor = Color.White;
+        expensesButton.BackColor = Color.FromArgb(25, 39, 57);
+        expensesButton.TextAlign = ContentAlignment.MiddleLeft;
+        expensesButton.Click += ExpensesClicked;
+        accountingButton.Name = "accountingButton";
+        accountingButton.Text = "▥  Accounting";
+        accountingButton.Dock = DockStyle.Top;
+        accountingButton.Height = 48;
+        accountingButton.FlatStyle = FlatStyle.Flat;
+        accountingButton.FlatAppearance.BorderSize = 0;
+        accountingButton.Font = new Font("Segoe UI", 11F);
+        accountingButton.ForeColor = Color.White;
+        accountingButton.BackColor = Color.FromArgb(25, 39, 57);
+        accountingButton.TextAlign = ContentAlignment.MiddleLeft;
+        accountingButton.Click += AccountingClicked;
         // 
         // collectionProgress
         // 
@@ -141,15 +179,21 @@ partial class MainForm
         sidebar.Controls.Add(dashboardButton, 0, 1);
         sidebar.Controls.Add(housesButton, 0, 2);
         sidebar.Controls.Add(billingButton, 0, 3);
-        sidebar.Controls.Add(settingsButton, 0, 4);
-        sidebar.Controls.Add(offlineLabel, 0, 5);
+        sidebar.Controls.Add(renovationsButton, 0, 4);
+        sidebar.Controls.Add(expensesButton, 0, 5);
+        sidebar.Controls.Add(accountingButton, 0, 6);
+        sidebar.Controls.Add(settingsButton, 0, 7);
+        sidebar.Controls.Add(offlineLabel, 0, 8);
         sidebar.Dock = DockStyle.Fill;
         sidebar.Location = new Point(0, 0);
         sidebar.Margin = new Padding(0);
         sidebar.Name = "sidebar";
         sidebar.Padding = new Padding(12, 24, 12, 12);
-        sidebar.RowCount = 6;
+        sidebar.RowCount = 9;
         sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 100F));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 52F));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 52F));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 52F));
         sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 52F));
         sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute, 52F));
         sidebar.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));

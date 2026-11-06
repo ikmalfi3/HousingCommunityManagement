@@ -1,0 +1,110 @@
+#nullable enable
+namespace HousingCommunityManagement;
+partial class DeleteDataForm
+{
+    private System.ComponentModel.IContainer? components = null;
+    private TableLayoutPanel layout = null!;
+    private Label heading = null!;
+    private Label warning = null!;
+    private CheckedListBox choices = null!;
+    private FlowLayoutPanel selectionActions = null!;
+    private Button selectAll = null!;
+    private Button clear = null!;
+    private TextBox effects = null!;
+    private FlowLayoutPanel buttons = null!;
+    private Button delete = null!;
+    private Button cancel = null!;
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) components?.Dispose();
+        base.Dispose(disposing);
+    }
+    private void InitializeComponent()
+    {
+        layout = new TableLayoutPanel();
+        heading = new Label();
+        warning = new Label();
+        choices = new CheckedListBox();
+        selectionActions = new FlowLayoutPanel();
+        selectAll = new Button();
+        clear = new Button();
+        effects = new TextBox();
+        buttons = new FlowLayoutPanel();
+        delete = new Button();
+        cancel = new Button();
+        SuspendLayout();
+        layout.Name = "layout";
+        heading.Name = "heading";
+        warning.Name = "warning";
+        choices.Name = "choices";
+        selectionActions.Name = "selectionActions";
+        selectAll.Name = "selectAll";
+        clear.Name = "clear";
+        effects.Name = "effects";
+        buttons.Name = "buttons";
+        delete.Name = "delete";
+        cancel.Name = "cancel";
+        layout.Dock = DockStyle.Fill;
+        layout.Padding = new Padding(20);
+        layout.ColumnCount = 1;
+        layout.RowCount = 6;
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 60F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 145F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+        heading.Text = "Delete data";
+        heading.Font = new Font("Segoe UI", 18F, FontStyle.Bold);
+        heading.Dock = DockStyle.Fill;
+        warning.Text = "Choose what to permanently delete or reset. Linked categories are selected automatically. This cannot be undone. No data is deleted until you complete the confirmation code.";
+        warning.Dock = DockStyle.Fill;
+        choices.Dock = DockStyle.Fill;
+        choices.CheckOnClick = true;
+        choices.HorizontalScrollbar = true;
+        choices.ItemCheck += ChoiceChanged;
+        selectionActions.Dock = DockStyle.Fill;
+        selectAll.Text = "Select all data";
+        selectAll.AutoSize = true;
+        selectAll.Click += SelectAllClicked;
+        clear.Text = "Clear selection";
+        clear.AutoSize = true;
+        clear.Click += ClearClicked;
+        selectionActions.Controls.Add(selectAll);
+        selectionActions.Controls.Add(clear);
+        effects.Dock = DockStyle.Fill;
+        effects.Multiline = true;
+        effects.ReadOnly = true;
+        effects.ScrollBars = ScrollBars.Vertical;
+        effects.TabStop = false;
+        buttons.Dock = DockStyle.Fill;
+        buttons.FlowDirection = FlowDirection.RightToLeft;
+        cancel.Text = "Cancel";
+        cancel.AutoSize = true;
+        cancel.DialogResult = DialogResult.Cancel;
+        delete.Text = "Delete selected data...";
+        delete.AutoSize = true;
+        delete.Enabled = false;
+        delete.ForeColor = Color.Firebrick;
+        delete.Click += DeleteClicked;
+        buttons.Controls.Add(cancel);
+        buttons.Controls.Add(delete);
+        layout.Controls.Add(heading, 0, 0);
+        layout.Controls.Add(warning, 0, 1);
+        layout.Controls.Add(choices, 0, 2);
+        layout.Controls.Add(selectionActions, 0, 3);
+        layout.Controls.Add(effects, 0, 4);
+        layout.Controls.Add(buttons, 0, 5);
+        Controls.Add(layout);
+        CancelButton = cancel;
+        ClientSize = new Size(780, 640);
+        MinimumSize = new Size(760, 600);
+        StartPosition = FormStartPosition.CenterParent;
+        Text = "Delete data";
+        Name = "DeleteDataForm";
+        AutoScaleDimensions = new SizeF(7F, 15F);
+        AutoScaleMode = AutoScaleMode.Font;
+        ResumeLayout(false);
+    }
+}

@@ -32,6 +32,19 @@ public partial class BillingForm : Form
     }
     private CheckBox[] MonthSelectors => [january, february, march, april, may, june, july, august, september, october, november, december];
     private int[] SelectedMonths => MonthSelectors.Select((box, i) => (box, i)).Where(x => x.box.Checked).Select(x => x.i + 1).ToArray();
+    private bool dashboardOverdueOnly;
+    private bool dashboardAllYears;
+    public void OpenDashboardFilter(string? filter)
+    {
+        dashboardAllYears = true;
+        dashboardOverdueOnly = filter == "Overdue";
+        billingTabs.SelectedIndex = 0;
+        updatingMonths = true;
+        foreach (var box in MonthSelectors) box.Checked = true;
+        updatingMonths = false;
+        allMonths.CheckState = CheckState.Checked;
+        Reload();
+    }
     private bool updatingMonths;
     private void AllMonthsClicked(object? sender, EventArgs e)
     {
@@ -44,6 +57,8 @@ public partial class BillingForm : Form
     private void RefreshClicked(object? sender, EventArgs e)
     {
         if (updatingMonths) return;
+        dashboardOverdueOnly = false;
+        dashboardAllYears = false;
         var count = SelectedMonths.Length;
         allMonths.CheckState = count == 0 ? CheckState.Unchecked : count == 12 ? CheckState.Checked : CheckState.Indeterminate;
         Reload();
@@ -54,9 +69,9 @@ public partial class BillingForm : Form
         try
         {
             var names = households.GetAll().ToDictionary(h => h.Id, h => h.HouseNumber);
-            grid.DataSource = billing.GetCharges().Where(c => c.Year == (int)year.Value && SelectedMonths.Contains(c.Month))
+            grid.DataSource = billing.GetCharges().Where(c => dashboardOverdueOnly ? c.StatusOn(DateTime.Today) == "Overdue" : (dashboardAllYears || c.Year == (int)year.Value) && SelectedMonths.Contains(c.Month))
                 .OrderBy(c => names.GetValueOrDefault(c.HouseholdId)).ThenBy(c => c.Month).Select(c => new ChargeRow(c, names.GetValueOrDefault(c.HouseholdId, "Unknown"))).ToList();
-            note.Text = "Select months above to filter records. No months selected: no records. Use Charge houses to choose billing months and houses separately.";
+            note.Text = dashboardOverdueOnly ? "Overdue charges across all years. Change year or month filters to return to normal billing view." : dashboardAllYears ? "All charges across all years. Change year or month filters to return to normal billing view." : "Select months above to filter records. No months selected: no records. Use Charge houses to choose billing months and houses separately.";
         }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not load billing"); }
     }
@@ -116,6 +131,12 @@ public partial class BillingForm : Form
             }
         }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not load summary", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+    }
+    private void BatchPayClicked(object? sender, EventArgs e)
+    {
+        if (billing is null || households is null) return;
+        using var dialog = new BatchMaintenancePaymentForm(billing, households, (int)year.Value, SelectedMonths);
+        if (dialog.ShowDialog(this) == DialogResult.OK) Reload();
     }
     private void PayClicked(object? sender, EventArgs e)
     {

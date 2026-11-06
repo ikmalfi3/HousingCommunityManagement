@@ -5,8 +5,13 @@ public partial class MainForm : Form
 {
     private readonly HouseholdService? service;
     private readonly string databasePath = "";
-    private Form1? householdPage;
+    private HouseholdForm? householdPage;
     private BillingForm? billingPage;
+    private RenovationsForm? renovationsPage;
+    private ExpensesForm? expensesPage;
+    private AccountingForm? accountingPage;
+    private DashboardView? overview;
+    private RenovationService? renovations;
     private readonly MonthlyBillingService? billing;
     public MainForm() { InitializeComponent(); }
     public MainForm(HouseholdService service, MonthlyBillingService billing, string databasePath) : this()
@@ -14,55 +19,55 @@ public partial class MainForm : Form
         this.service = service;
         this.billing = billing;
         this.databasePath = databasePath;
+        renovations = new RenovationService(new HousingCommunityManagement.Data.HouseholdRepository(databasePath));
     }
     private void MainShown(object? sender, EventArgs e) => ShowDashboard();
     private void DashboardClicked(object? sender, EventArgs e) => ShowDashboard();
     private void ShowDashboard()
     {
+        CloseAccountingPage();
+        CloseExpensesPage();
+        CloseRenovationsPage();
         CloseHouseholdPage();
         CloseBillingPage();
         billingButton.BackColor = Color.FromArgb(25, 39, 57);
         dashboardPanel.Visible = true;
         dashboardButton.BackColor = Color.FromArgb(43, 65, 88);
         housesButton.BackColor = Color.FromArgb(25, 39, 57);
-        try
+        if (service is null || billing is null || renovations is null) return;
+        if (overview is null)
         {
-            var houses = service?.GetAll() ?? [];
-            totalValue.Text = houses.Count.ToString("N0");
-            houseDetails.Text = $"{houses.Count(h => h.IsActive):N0} active / {houses.Count(h => h.IsOwned):N0} owned";
-            var today = DateTime.Today;
-            var month = today.Month;
-            var charges = billing?.GetCharges() ?? [];
-            var current = charges.Where(c => c.Year == today.Year && c.Month == month).ToList();
-            var charged = current.Sum(c => c.Amount);
-            var paid = current.Sum(c => c.Paid);
-            monthlyFeeValue.Text = $"RM {current.Sum(c => c.Balance):N2}";
-            collectedValue.Text = $"RM {paid:N2}";
-            claimsValue.Text = $"RM {charges.Where(c => c.StatusOn(today) == "Overdue").Sum(c => c.Balance):N2}";
-            var due = MonthlyBillingService.DueDate(today.Year, month);
-            dateLabel.Text = $"{today:MMMM yyyy} / Monthly charges";
-            feeDetails.Text = $"{current.Count} house(s) billed this month";
-            collectedDetails.Text = "Payments allocated to this month";
-            claimsDetails.Text = "Unpaid balances past their due dates / all months";
-            collectionNote.Text = current.Count == 0 ? "No charges generated for this month. Open Billing & payments to generate them."
-                : $"{(charged == 0 ? 100 : paid / charged * 100):N1}% collected / RM {charged:N2} charged. Overdue status follows each charge's saved due date.";
-            collectionProgress.Value = charged == 0 ? 0 : Math.Clamp((int)(paid / charged * 100), 0, 100);
-            var names = houses.ToDictionary(h => h.Id, h => h.HouseNumber);
-            var recent = charges.SelectMany(c => c.Payments.Select(p => new { Charge = c, Payment = p }))
-                .OrderByDescending(x => x.Payment.Date).ThenByDescending(x => x.Payment.Id).Take(8).ToList();
-            recentEmpty.Text = recent.Count == 0 ? "No maintenance payments recorded yet."
-                : string.Join(Environment.NewLine + Environment.NewLine, recent.Select(x =>
-                    $"{x.Payment.Date:d MMM yyyy}    House {names.GetValueOrDefault(x.Charge.HouseholdId)}    {new DateTime(x.Charge.Year, x.Charge.Month, 1):MMM yyyy}    RM {x.Payment.Amount:N2}    {x.Payment.Reference}"));
-            footerNote.Text = $"Monthly rate: RM {service?.GetSettings().MonthlyMaintenanceFee ?? 0:N2} / Charge any selection of months. Existing charges retain their original rate.";
+            foreach (var control in dashboardPanel.Controls.Cast<Control>().ToArray()) control.Dispose();
+            dashboardPanel.Controls.Clear();
+            dashboardPanel.ColumnStyles.Clear(); dashboardPanel.RowStyles.Clear();
+            dashboardPanel.ColumnCount = dashboardPanel.RowCount = 1;
+            dashboardPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            dashboardPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            dashboardPanel.Padding = Padding.Empty;
+            overview = new DashboardView(service, billing, renovations, NavigateDashboard);
+            dashboardPanel.Controls.Add(overview, 0, 0);
         }
-        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not load dashboard", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        overview.Reload();
+    }
+    private void NavigateDashboard(string page, string? filter)
+    {
+        switch (page)
+        {
+            case "Billing": BillingClicked(this, EventArgs.Empty); billingPage?.OpenDashboardFilter(filter); break;
+            case "Expenses": ExpensesClicked(this, EventArgs.Empty); expensesPage?.OpenDashboardFilter(filter); break;
+            case "Renovations": RenovationsClicked(this, EventArgs.Empty); renovationsPage?.OpenDashboardFilter(filter); break;
+            case "Accounting": AccountingClicked(this, EventArgs.Empty); break;
+        }
     }
     private void HousesClicked(object? sender, EventArgs e)
     {
         if (service is null || householdPage is not null) return;
+        CloseAccountingPage();
+        CloseExpensesPage();
+        CloseRenovationsPage();
         CloseBillingPage();
         billingButton.BackColor = Color.FromArgb(25, 39, 57);
-        householdPage = new Form1(service, databasePath) { TopLevel = false, FormBorderStyle = FormBorderStyle.None, Dock = DockStyle.Fill, MinimumSize = Size.Empty };
+        householdPage = new HouseholdForm(service, databasePath) { TopLevel = false, FormBorderStyle = FormBorderStyle.None, Dock = DockStyle.Fill, MinimumSize = Size.Empty };
         contentPanel.Controls.Add(householdPage);
         dashboardPanel.Visible = false;
         householdPage.Show();
@@ -73,6 +78,9 @@ public partial class MainForm : Form
     private void BillingClicked(object? sender, EventArgs e)
     {
         if (billing is null || service is null || billingPage is not null) return;
+        CloseAccountingPage();
+        CloseExpensesPage();
+        CloseRenovationsPage();
         CloseHouseholdPage();
         dashboardPanel.Visible = false;
         billingPage = new BillingForm(billing, service) { TopLevel = false, FormBorderStyle = FormBorderStyle.None, Dock = DockStyle.Fill };
@@ -94,7 +102,11 @@ public partial class MainForm : Form
             using var dialog = new CommunitySettingsForm(service);
             if (dialog.ShowDialog(this) == DialogResult.OK)
             {
+                if (dialog.DataDeleted) { ShowDashboard(); return; }
                 if (billingPage is not null) { CloseBillingPage(); BillingClicked(sender, e); }
+                else if (accountingPage is not null) { CloseAccountingPage(); AccountingClicked(sender, e); }
+                else if (expensesPage is not null) { CloseExpensesPage(); ExpensesClicked(sender, e); }
+                else if (renovationsPage is not null) { CloseRenovationsPage(); RenovationsClicked(sender, e); }
                 else if (householdPage is null) ShowDashboard();
                 else { CloseHouseholdPage(); HousesClicked(sender, e); }
             }
@@ -108,5 +120,53 @@ public partial class MainForm : Form
         householdPage.Dispose();
         householdPage = null;
     }
-    private void MainClosing(object? sender, FormClosingEventArgs e) { CloseHouseholdPage(); CloseBillingPage(); }
+    private void RenovationsClicked(object? sender, EventArgs e)
+    {
+        if (renovations is null || service is null || renovationsPage is not null) return;
+        CloseAccountingPage();
+        CloseExpensesPage();
+        CloseHouseholdPage(); CloseBillingPage();
+        dashboardPanel.Visible = false;
+        renovationsPage = new RenovationsForm(renovations, service) { TopLevel = false, FormBorderStyle = FormBorderStyle.None, Dock = DockStyle.Fill };
+        contentPanel.Controls.Add(renovationsPage); renovationsPage.Show(); renovationsPage.BringToFront();
+        renovationsButton.BackColor = Color.FromArgb(43, 65, 88);
+        dashboardButton.BackColor = housesButton.BackColor = billingButton.BackColor = Color.FromArgb(25, 39, 57);
+    }
+    private void CloseRenovationsPage()
+    {
+        if (renovationsPage is not null) { renovationsPage.Close(); renovationsPage.Dispose(); renovationsPage = null; }
+        renovationsButton.BackColor = Color.FromArgb(25, 39, 57);
+    }
+    private void ExpensesClicked(object? sender, EventArgs e)
+    {
+        if (service?.Expenses is not { } expenses || expensesPage is not null) return;
+        CloseAccountingPage();
+        CloseHouseholdPage(); CloseBillingPage(); CloseRenovationsPage();
+        dashboardPanel.Visible = false;
+        expensesPage = new ExpensesForm(expenses) { TopLevel = false, FormBorderStyle = FormBorderStyle.None, Dock = DockStyle.Fill };
+        contentPanel.Controls.Add(expensesPage); expensesPage.Show(); expensesPage.BringToFront();
+        expensesButton.BackColor = Color.FromArgb(43, 65, 88);
+        dashboardButton.BackColor = housesButton.BackColor = billingButton.BackColor = Color.FromArgb(25, 39, 57);
+    }
+    private void CloseExpensesPage()
+    {
+        if (expensesPage is not null) { expensesPage.Close(); expensesPage.Dispose(); expensesPage = null; }
+        expensesButton.BackColor = Color.FromArgb(25, 39, 57);
+    }
+    private void AccountingClicked(object? sender, EventArgs e)
+    {
+        if (service?.Accounting is not { } accounting || accountingPage is not null) return;
+        CloseHouseholdPage(); CloseBillingPage(); CloseRenovationsPage(); CloseExpensesPage();
+        dashboardPanel.Visible = false;
+        accountingPage = new AccountingForm(accounting) { TopLevel = false, FormBorderStyle = FormBorderStyle.None, Dock = DockStyle.Fill };
+        contentPanel.Controls.Add(accountingPage); accountingPage.Show(); accountingPage.BringToFront();
+        accountingButton.BackColor = Color.FromArgb(43, 65, 88);
+        dashboardButton.BackColor = housesButton.BackColor = billingButton.BackColor = Color.FromArgb(25, 39, 57);
+    }
+    private void CloseAccountingPage()
+    {
+        if (accountingPage is not null) { accountingPage.Close(); accountingPage.Dispose(); accountingPage = null; }
+        accountingButton.BackColor = Color.FromArgb(25, 39, 57);
+    }
+    private void MainClosing(object? sender, FormClosingEventArgs e) { CloseHouseholdPage(); CloseBillingPage(); CloseRenovationsPage(); CloseExpensesPage(); CloseAccountingPage(); }
 }

@@ -1,17 +1,25 @@
+#nullable enable
 namespace HousingCommunityManagement;
 partial class CommunitySettingsForm
 {
-    private System.ComponentModel.IContainer components = null;
-    private TableLayoutPanel table;
-    private FlowLayoutPanel buttons;
-    private Button save;
-    private Button cancel;
-    private NumericUpDown fee;
-    private Label feeLabel;
-    private TextBox flagNames;
-    private Label flagNamesLabel;
-    private Label note;
-    private Label noteLabel;
+    private System.ComponentModel.IContainer? components = null;
+    private TableLayoutPanel table = null!;
+    private GroupBox flagsGroup = null!;
+    private TableLayoutPanel flagsLayout = null!;
+    private Label flagNamesLabel = null!;
+    private TextBox flagNames = null!;
+    private Label note = null!;
+    private GroupBox accountingGroup = null!;
+    private TableLayoutPanel accountingLayout = null!;
+    private Label accountingNote = null!;
+    private Button accountingButton = null!;
+    private FlowLayoutPanel buttons = null!;
+    private Button save = null!;
+    private Button cancel = null!;
+    private GroupBox deleteGroup = null!;
+    private TableLayoutPanel deleteLayout = null!;
+    private Label deleteNote = null!;
+    private Button deleteDataButton = null!;
     protected override void Dispose(bool disposing)
     {
         if (disposing) components?.Dispose();
@@ -20,141 +28,152 @@ partial class CommunitySettingsForm
     private void InitializeComponent()
     {
         table = new TableLayoutPanel();
-        feeLabel = new Label();
-        fee = new NumericUpDown();
+        deleteGroup = new GroupBox();
+        deleteLayout = new TableLayoutPanel();
+        deleteNote = new Label();
+        deleteDataButton = new Button();
+        flagsGroup = new GroupBox();
+        flagsLayout = new TableLayoutPanel();
         flagNamesLabel = new Label();
         flagNames = new TextBox();
-        noteLabel = new Label();
         note = new Label();
+        accountingGroup = new GroupBox();
+        accountingLayout = new TableLayoutPanel();
+        accountingNote = new Label();
+        accountingButton = new Button();
         buttons = new FlowLayoutPanel();
-        cancel = new Button();
         save = new Button();
+        cancel = new Button();
         table.SuspendLayout();
-        ((System.ComponentModel.ISupportInitialize)fee).BeginInit();
+        flagsGroup.SuspendLayout();
+        flagsLayout.SuspendLayout();
+        accountingGroup.SuspendLayout();
+        accountingLayout.SuspendLayout();
         buttons.SuspendLayout();
         SuspendLayout();
-        // 
-        // table
-        // 
-        table.ColumnCount = 2;
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 180F));
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        table.Controls.Add(feeLabel, 0, 0);
-        table.Controls.Add(fee, 1, 0);
-        table.Controls.Add(flagNamesLabel, 0, 1);
-        table.Controls.Add(flagNames, 1, 1);
-        table.Controls.Add(noteLabel, 0, 2);
-        table.Controls.Add(note, 1, 2);
-        table.Controls.Add(buttons, 0, 3);
-        table.Dock = DockStyle.Fill;
-        table.Location = new Point(0, 0);
+        // Main sections
         table.Name = "table";
+        table.Dock = DockStyle.Fill;
         table.Padding = new Padding(20);
+        table.ColumnCount = 1;
         table.RowCount = 4;
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 50F));
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 240F));
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 65F));
-        table.RowStyles.Add(new RowStyle());
-        table.Size = new Size(640, 440);
-        table.TabIndex = 0;
-        // 
-        // feeLabel
-        // 
-        feeLabel.AutoSize = true;
-        feeLabel.Location = new Point(23, 20);
-        feeLabel.Name = "feeLabel";
-        feeLabel.Size = new Size(150, 30);
-        feeLabel.TabIndex = 0;
-        feeLabel.Text = "Monthly maintenance rate (RM)";
-        // 
-        // fee
-        // 
-        fee.DecimalPlaces = 2;
-        fee.Dock = DockStyle.Fill;
-        fee.Location = new Point(203, 23);
-        fee.Maximum = new decimal(new int[] { 1000000, 0, 0, 0 });
-        fee.Name = "fee";
-        fee.Size = new Size(414, 23);
-        fee.TabIndex = 0;
-        fee.ThousandsSeparator = true;
-        // 
-        // flagNamesLabel
-        // 
-        flagNamesLabel.AutoSize = true;
-        flagNamesLabel.Location = new Point(23, 70);
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        table.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 110F));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 42F));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 100F));
+        table.Controls.Add(flagsGroup, 0, 0);
+        table.Controls.Add(accountingGroup, 0, 1);
+        table.Controls.Add(buttons, 0, 2);
+        table.Controls.Add(deleteGroup, 0, 3);
+        // House flags: editor and guidance stay together.
+        flagsGroup.Name = "flagsGroup";
+        flagsGroup.Text = "House flags";
+        flagsGroup.Dock = DockStyle.Fill;
+        flagsGroup.Padding = new Padding(12);
+        flagsGroup.TabIndex = 0;
+        flagsGroup.Controls.Add(flagsLayout);
+        flagsLayout.Name = "flagsLayout";
+        flagsLayout.Dock = DockStyle.Fill;
+        flagsLayout.ColumnCount = 1;
+        flagsLayout.RowCount = 3;
+        flagsLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        flagsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 28F));
+        flagsLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        flagsLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50F));
+        flagsLayout.Controls.Add(flagNamesLabel, 0, 0);
+        flagsLayout.Controls.Add(flagNames, 0, 1);
+        flagsLayout.Controls.Add(note, 0, 2);
         flagNamesLabel.Name = "flagNamesLabel";
-        flagNamesLabel.Size = new Size(156, 15);
-        flagNamesLabel.TabIndex = 1;
-        flagNamesLabel.Text = "Available flags (one per line)";
-        // 
-        // flagNames
-        // 
-        flagNames.Dock = DockStyle.Fill;
-        flagNames.Location = new Point(203, 73);
-        flagNames.Multiline = true;
+        flagNamesLabel.Text = "Edit available flags below, one per line. Click Save settings to apply.";
+        flagNamesLabel.Dock = DockStyle.Fill;
         flagNames.Name = "flagNames";
+        flagNames.Multiline = true;
+        flagNames.AcceptsReturn = true;
         flagNames.ScrollBars = ScrollBars.Vertical;
-        flagNames.Size = new Size(414, 234);
-        flagNames.TabIndex = 1;
-        // 
-        // noteLabel
-        // 
-        noteLabel.AutoSize = true;
-        noteLabel.Location = new Point(23, 310);
-        noteLabel.Name = "noteLabel";
-        noteLabel.Size = new Size(34, 15);
-        noteLabel.TabIndex = 2;
-        noteLabel.Text = "Flags";
-        // 
-        // note
-        // 
-        note.Dock = DockStyle.Fill;
-        note.Location = new Point(203, 310);
+        flagNames.BackColor = SystemColors.Window;
+        flagNames.Dock = DockStyle.Fill;
+        flagNames.TabIndex = 0;
+        flagNames.AccessibleName = "Available house flags, one per line";
         note.Name = "note";
-        note.Size = new Size(414, 65);
-        note.TabIndex = 2;
-        note.Text = "Add custom flags here, then select them when editing a house. Removing a flag here does not remove it from existing houses.";
-        // 
-        // buttons
-        // 
-        buttons.AutoSize = true;
-        table.SetColumnSpan(buttons, 2);
-        buttons.Controls.Add(cancel);
-        buttons.Controls.Add(save);
+        note.Text = "Assign manual flags in the house editor. Removing a name here keeps existing assignments. Automatic flags are managed by billing and renovations.";
+        note.ForeColor = SystemColors.GrayText;
+        note.Padding = new Padding(0, 8, 0, 0);
+        note.Dock = DockStyle.Fill;
+        // Accounting opens its own settings window.
+        accountingGroup.Name = "accountingGroup";
+        accountingGroup.Text = "Accounting";
+        accountingGroup.Dock = DockStyle.Fill;
+        accountingGroup.Padding = new Padding(12);
+        accountingGroup.TabIndex = 1;
+        accountingGroup.Controls.Add(accountingLayout);
+        accountingLayout.Name = "accountingLayout";
+        accountingLayout.Dock = DockStyle.Fill;
+        accountingLayout.ColumnCount = 1;
+        accountingLayout.RowCount = 2;
+        accountingLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        accountingLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+        accountingLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        accountingLayout.Controls.Add(accountingButton, 0, 0);
+        accountingLayout.Controls.Add(accountingNote, 0, 1);
+        accountingButton.Name = "accountingButton";
+        accountingButton.Text = "Open accounting settings...";
+        accountingButton.AutoSize = true;
+        accountingButton.TabIndex = 0;
+        accountingButton.Click += AccountingClicked;
+        accountingNote.Name = "accountingNote";
+        accountingNote.Text = "Manage accounts, defaults and opening balances. View the journal and balances from Accounting in the sidebar.";
+        accountingNote.ForeColor = SystemColors.GrayText;
+        accountingNote.Dock = DockStyle.Fill;
+        // Actions
+        buttons.Name = "buttons";
         buttons.Dock = DockStyle.Fill;
         buttons.FlowDirection = FlowDirection.RightToLeft;
-        buttons.Location = new Point(23, 378);
-        buttons.Name = "buttons";
-        buttons.Size = new Size(594, 39);
-        buttons.TabIndex = 3;
-        // 
-        // cancel
-        // 
+        buttons.Padding = new Padding(0, 6, 0, 0);
+        buttons.TabIndex = 2;
+        buttons.Controls.Add(cancel);
+        buttons.Controls.Add(save);
+        cancel.Name = "cancel";
+        cancel.Text = "Cancel";
         cancel.AutoSize = true;
         cancel.DialogResult = DialogResult.Cancel;
-        cancel.Location = new Point(516, 3);
-        cancel.Name = "cancel";
-        cancel.Size = new Size(75, 25);
-        cancel.TabIndex = 0;
-        cancel.Text = "Cancel";
-        // 
-        // save
-        // 
-        save.AutoSize = true;
-        save.Location = new Point(435, 3);
+        cancel.TabIndex = 1;
         save.Name = "save";
-        save.Size = new Size(75, 25);
-        save.TabIndex = 1;
-        save.Text = "Save";
+        save.Text = "Save settings";
+        save.AutoSize = true;
+        save.TabIndex = 0;
         save.Click += SaveClicked;
-        // 
-        // CommunitySettingsForm
-        // 
+        // Destructive actions are kept at the very bottom, apart from regular settings.
+        deleteGroup.Name = "deleteGroup";
+        deleteGroup.Text = "Delete data";
+        deleteGroup.Dock = DockStyle.Fill;
+        deleteGroup.Padding = new Padding(12, 6, 12, 6);
+        deleteGroup.TabIndex = 3;
+        deleteGroup.Controls.Add(deleteLayout);
+        deleteLayout.Name = "deleteLayout";
+        deleteLayout.Dock = DockStyle.Fill;
+        deleteLayout.ColumnCount = 1;
+        deleteLayout.RowCount = 2;
+        deleteLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        deleteLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+        deleteLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        deleteNote.Name = "deleteNote";
+        deleteNote.Text = "Clear trial data by category, with a confirmation code. Deleting closes Settings and discards unsaved edits.";
+        deleteNote.ForeColor = SystemColors.GrayText;
+        deleteNote.Dock = DockStyle.Fill;
+        deleteDataButton.Name = "deleteDataButton";
+        deleteDataButton.Text = "Choose data to delete...";
+        deleteDataButton.AutoSize = true;
+        deleteDataButton.ForeColor = Color.Firebrick;
+        deleteDataButton.TabIndex = 0;
+        deleteDataButton.Click += DeleteDataClicked;
+        deleteLayout.Controls.Add(deleteNote, 0, 0);
+        deleteLayout.Controls.Add(deleteDataButton, 0, 1);
         AcceptButton = save;
+        CancelButton = cancel;
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
-        CancelButton = cancel;
-        ClientSize = new Size(640, 440);
+        ClientSize = new Size(680, 600);
         Controls.Add(table);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -163,8 +182,12 @@ partial class CommunitySettingsForm
         StartPosition = FormStartPosition.CenterParent;
         Text = "Community settings";
         table.ResumeLayout(false);
-        table.PerformLayout();
-        ((System.ComponentModel.ISupportInitialize)fee).EndInit();
+        flagsGroup.ResumeLayout(false);
+        flagsLayout.ResumeLayout(false);
+        flagsLayout.PerformLayout();
+        accountingGroup.ResumeLayout(false);
+        accountingLayout.ResumeLayout(false);
+        accountingLayout.PerformLayout();
         buttons.ResumeLayout(false);
         buttons.PerformLayout();
         ResumeLayout(false);

@@ -25,6 +25,7 @@ public sealed class HouseFlag
 public sealed class CommunitySettings
 {
     public int Id { get; set; } = 1;
+    // Retained for compatibility with existing databases; charging always uses an explicit amount.
     public decimal MonthlyMaintenanceFee { get; set; }
     public List<string> FlagNames { get; set; } = [];
 }

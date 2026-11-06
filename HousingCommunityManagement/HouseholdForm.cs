@@ -1,74 +1,127 @@
 using HousingCommunityManagement.Core;
-namespace HousingCommunityManagement;
-public partial class HouseholdForm : Form
+using System.Text.Json;
+
+namespace HousingCommunityManagement
 {
-    private readonly HouseholdService? service;
-    private readonly Household? existing;
-    public HouseholdForm() { InitializeComponent(); }
-    public HouseholdForm(HouseholdService service, Household? existing) : this()
+    public partial class HouseholdForm : Form
     {
-        this.service = service; this.existing = existing;
-        Text = existing is null ? "Add house" : "Edit house";
-        house.Text = existing?.HouseNumber ?? "";
-        owned.Checked = existing?.IsOwned ?? false;
-        race.SelectedItem = existing?.Race ?? "";
-        owner.Lines = existing?.Owners.ToArray() ?? [];
-        contact.Lines = existing?.Contacts.ToArray() ?? [];
-        active.Checked = existing?.IsActive ?? true;
-        var manual = existing?.Flags.Where(f => f.Source == "Manual").Select(f => f.Name).ToList() ?? [];
-        foreach (var name in service.GetAvailableFlags().Concat(manual).Distinct(StringComparer.OrdinalIgnoreCase))
-            flags.Items.Add(name, manual.Contains(name, StringComparer.OrdinalIgnoreCase));
-        derived.Text = string.Join(", ", existing?.Flags.Where(f => f.Source != "Manual").Select(f => $"{f.Name} ({f.Source})") ?? []);
-    }
-    private void AddFlagClicked(object? sender, EventArgs e)
-    {
-        if (service is null) return;
-        try
+        private readonly HouseholdService? service;
+        private List<Household> households = [];
+        private DateTime flagsDate = DateTime.Today;
+        private readonly string? columnSettingsPath;
+
+        public HouseholdForm() : this(null, "") { }
+
+        public HouseholdForm(HouseholdService? service, string databasePath)
         {
-            var name = service.AddFlag(newFlag.Text);
-            var index = flags.Items.Cast<string>().ToList().FindIndex(n => n.Equals(name, StringComparison.OrdinalIgnoreCase));
-            if (index < 0) index = flags.Items.Add(name);
-            flags.SetItemChecked(index, true);
-            flags.SelectedIndex = index;
-            newFlag.Clear();
-            newFlag.Focus();
+            this.service = service;
+            InitializeComponent();
+            databaseLabel.Text = $"Database: {databasePath}";
+            if (!string.IsNullOrEmpty(databasePath))
+                columnSettingsPath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(databasePath))!, "house-table.json");
         }
-        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not add flag", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
-    }
-    private void DeleteFlagClicked(object? sender, EventArgs e)
-    {
-        if (service is null) return;
-        if (flags.SelectedItem is not string name)
+        private void FilterChanged(object? sender, EventArgs e) => ApplyFilter();
+        private void RefreshClicked(object? sender, EventArgs e) => Reload();
+        private void DateFlagsTick(object? sender, EventArgs e)
         {
-            MessageBox.Show(this, "Select a flag from the list to delete.", "Delete flag");
-            return;
+            if (service is not null && Visible && flagsDate != DateTime.Today) Reload();
         }
-        try
+        private void AddClicked(object? sender, EventArgs e) => EditHousehold(null);
+        private void EditClicked(object? sender, EventArgs e) => EditSelected();
+        private void GridDoubleClicked(object? sender, DataGridViewCellEventArgs e)
         {
-            service.DeleteFlag(name, existing?.Id);
-            existing?.Flags.RemoveAll(f => f.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-            derived.Text = string.Join(", ", existing?.Flags.Where(f => f.Source != "Manual").Select(f => $"{f.Name} ({f.Source})") ?? []);
-            flags.Items.RemoveAt(flags.SelectedIndex);
+            if (e.RowIndex >= 0) EditSelected();
         }
-        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not delete flag", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
-    }
-    private void NewFlagKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.KeyCode != Keys.Enter) return;
-        e.SuppressKeyPress = true;
-        AddFlagClicked(sender, EventArgs.Empty);
-    }
-    private void SaveClicked(object? sender, EventArgs e)
-    {
-        if (service is null) return;
-        try
+        private void RangeClicked(object? sender, EventArgs e)
         {
-            var selected = flags.CheckedItems.Cast<string>().Select(n => new HouseFlag { Name = n }).ToList();
-            selected.AddRange(existing?.Flags.Where(f => f.Source != "Manual") ?? []);
-            service.Save(new Household { Id = existing?.Id ?? 0, HouseNumber = house.Text, IsOwned = owned.Checked,
-                Race = race.SelectedItem as string ?? "", Owners = owner.Lines.ToList(), Contacts = contact.Lines.ToList(), Flags = selected, IsActive = active.Checked });
-            DialogResult = DialogResult.OK;
+            if (service is null) return;
+            try { using var dialog = new HouseRangeForm(service); if (dialog.ShowDialog(this) == DialogResult.OK) Reload(); }
+            catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not open range"); }
         }
-        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not save house", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        private void SettingsClicked(object? sender, EventArgs e)
+        {
+            if (service is null) return;
+            try { using var dialog = new CommunitySettingsForm(service); if (dialog.ShowDialog(this) == DialogResult.OK) Reload(); }
+            catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not open settings"); }
+        }
+        private void FormShown(object? sender, EventArgs e)
+        {
+            RestoreColumnWidths();
+            Reload();
+        }
+
+        private void GridCellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
+        {
+            if (e.RowIndex < 0 || grid.Rows[e.RowIndex].DataBoundItem is not Household household) return;
+            var column = grid.Columns[e.ColumnIndex];
+            if (column == ownerColumn) e.Value = string.Join(Environment.NewLine, household.Owners);
+            else if (column == contactColumn) e.Value = string.Join(Environment.NewLine, household.Contacts);
+            else if (column == flagsColumn) e.Value = string.Join(Environment.NewLine, household.Flags.Select(f => f.Name));
+            else return;
+            e.FormattingApplied = true;
+        }
+
+        private void RestoreColumnWidths()
+        {
+            if (columnSettingsPath is null || !File.Exists(columnSettingsPath)) return;
+            try
+            {
+                var widths = JsonSerializer.Deserialize<Dictionary<string, int>>(File.ReadAllText(columnSettingsPath));
+                if (widths is null) return;
+                foreach (DataGridViewColumn column in grid.Columns)
+                    if (widths.TryGetValue(column.Name, out var width) && width is >= 20 and <= 5000)
+                        column.Width = Math.Clamp((int)Math.Round(width * DeviceDpi / 96d), column.MinimumWidth, 10000);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+                // Invalid or unavailable layout preferences should not prevent opening the database.
+            }
+        }
+
+        private void SaveColumnWidths(object? sender, FormClosingEventArgs e)
+        {
+            if (columnSettingsPath is null || e.Cancel) return;
+            try
+            {
+                var widths = grid.Columns.Cast<DataGridViewColumn>().ToDictionary(c => c.Name,
+                    c => (int)Math.Round(c.Width * 96d / DeviceDpi));
+                Directory.CreateDirectory(Path.GetDirectoryName(columnSettingsPath)!);
+                var temporary = columnSettingsPath + ".tmp";
+                File.WriteAllText(temporary, JsonSerializer.Serialize(widths));
+                File.Move(temporary, columnSettingsPath, true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                MessageBox.Show(this, $"Column widths could not be remembered.\n\n{ex.Message}", "Table layout", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void Reload()
+        {
+            try { households = service?.GetAll() ?? []; flagsDate = DateTime.Today; feeLabel.Text = "Maintenance amounts are entered in Charge houses for each charging run."; ApplyFilter(); }
+            catch (Exception ex) { MessageBox.Show(this, $"Could not load households.\n\n{ex.Message}", "Load failed", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        }
+
+        private void ApplyFilter()
+        {
+            var term = search.Text.Trim();
+            var filtered = households.Where(h => (includeInactive.Checked || h.IsActive) &&
+                new[] { h.HouseNumber, h.OwnerSummary, h.ContactSummary, h.FlagSummary }.Any(v => v.Contains(term, StringComparison.OrdinalIgnoreCase))).ToList();
+            grid.DataSource = filtered;
+            count.Text = $"{filtered.Count} house(s) shown · {households.Count(h => h.IsActive)} active in total";
+        }
+
+        private void EditSelected()
+        {
+            if (grid.CurrentRow?.DataBoundItem is Household household) EditHousehold(household);
+            else MessageBox.Show(this, "Select a house to edit.", "Houses");
+        }
+
+        private void EditHousehold(Household? household)
+        {
+            if (service is null) return;
+            try { using var dialog = new HouseholdEditForm(service, household); dialog.ShowDialog(this); Reload(); }
+            catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not open house"); }
+        }
     }
 }

@@ -13,6 +13,9 @@ public sealed partial class HouseholdDbContext(string databasePath) : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureBilling(modelBuilder);
+        ConfigureRenovations(modelBuilder);
+        ConfigureAccounting(modelBuilder);
+        ConfigureExpenses(modelBuilder);
         var h = modelBuilder.Entity<Household>();
         h.Property(x => x.HouseNumber).UseCollation("NOCASE"); h.HasIndex(x => x.HouseNumber).IsUnique();
         h.Ignore(x => x.OwnerSummary); h.Ignore(x => x.ContactSummary); h.Ignore(x => x.FlagSummary);
@@ -44,7 +47,11 @@ public sealed partial class HouseholdRepository : IHouseholdRepository, IMonthly
         if (columns.Contains("OwnerName")) UpgradeLegacy(db); else db.Database.EnsureCreated();
         if (columns.Count > 0 && !columns.Contains("Race"))
             db.Database.ExecuteSqlRaw("ALTER TABLE Households ADD COLUMN Race TEXT NOT NULL DEFAULT ''");
+        EnsureAccountingSchema(db);
         EnsureBillingSchema(db);
+        EnsureRenovationSchema(db);
+        EnsureExpenseSchema(db);
+
         if (!db.Settings.Any()) { db.Settings.Add(new CommunitySettings()); db.SaveChanges(); }
         // Remove the original starter suggestions, retaining any already used on houses.
         var settings = db.Settings.Single();
@@ -78,12 +85,21 @@ public sealed partial class HouseholdRepository : IHouseholdRepository, IMonthly
     }
     public List<Household> GetAll()
     {
-        using var db = new HouseholdDbContext(databasePath); return db.Households.AsNoTracking().OrderBy(h => h.HouseNumber).ToList();
+        using var db = new HouseholdDbContext(databasePath);
+        var houses = db.Households.AsNoTracking().OrderBy(h => h.HouseNumber).ToList();
+        DerivedHouseFlags.Apply(houses, db.MonthlyCharges.Include(c => c.Payments).AsNoTracking().ToList(),
+            db.Renovations.AsNoTracking().ToList(), DateTime.Today);
+        return houses;
     }
     public void Save(Household household)
     {
         using var db = new HouseholdDbContext(databasePath);
-        if (household.Id == 0) db.Households.Add(household); else db.Households.Update(household); SaveChanges(db);
+        // Automatic flags are a live projection, never a saved snapshot that can go stale.
+        var saved = new Household { Id = household.Id, HouseNumber = household.HouseNumber, IsOwned = household.IsOwned,
+            Race = household.Race, Owners = household.Owners, Contacts = household.Contacts, IsActive = household.IsActive,
+            Flags = household.Flags.Where(f => !DerivedHouseFlags.IsManaged(f)).ToList() };
+        if (saved.Id == 0) db.Households.Add(saved); else db.Households.Update(saved);
+        SaveChanges(db); household.Id = saved.Id;
     }
     public int AddMissing(List<Household> households)
     {

@@ -13,6 +13,8 @@ partial class PaymentForm
     private FlowLayoutPanel buttons;
     private Button save;
     private Button cancel;
+    private Label cashAccountLabel;
+    private ComboBox cashAccount;
     protected override void Dispose(bool disposing)
     {
         if (disposing) components?.Dispose();
@@ -28,6 +30,8 @@ partial class PaymentForm
         date = new DateTimePicker();
         referenceLabel = new Label();
         reference = new TextBox();
+        cashAccountLabel = new Label();
+        cashAccount = new ComboBox();
         buttons = new FlowLayoutPanel();
         cancel = new Button();
         save = new Button();
@@ -48,18 +52,21 @@ partial class PaymentForm
         layout.Controls.Add(date, 1, 2);
         layout.Controls.Add(referenceLabel, 0, 3);
         layout.Controls.Add(reference, 1, 3);
-        layout.Controls.Add(buttons, 0, 4);
+        layout.Controls.Add(cashAccountLabel, 0, 4);
+        layout.Controls.Add(cashAccount, 1, 4);
+        layout.Controls.Add(buttons, 0, 5);
         layout.Dock = DockStyle.Fill;
         layout.Location = new Point(0, 0);
         layout.Name = "layout";
         layout.Padding = new Padding(20);
-        layout.RowCount = 5;
+        layout.RowCount = 6;
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 70F));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40F));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        layout.Size = new Size(480, 290);
+        layout.Size = new Size(480, 330);
         layout.TabIndex = 0;
         // 
         // heading
@@ -125,6 +132,24 @@ partial class PaymentForm
         reference.Size = new Size(314, 23);
         reference.TabIndex = 6;
         // 
+        // cashAccountLabel
+        // 
+        cashAccountLabel.AutoSize = true;
+        cashAccountLabel.Location = new Point(23, 210);
+        cashAccountLabel.Name = "cashAccountLabel";
+        cashAccountLabel.Size = new Size(78, 15);
+        cashAccountLabel.TabIndex = 7;
+        cashAccountLabel.Text = "Received into";
+        // 
+        // cashAccount
+        // 
+        cashAccount.Dock = DockStyle.Fill;
+        cashAccount.DropDownStyle = ComboBoxStyle.DropDownList;
+        cashAccount.Location = new Point(143, 213);
+        cashAccount.Name = "cashAccount";
+        cashAccount.Size = new Size(314, 23);
+        cashAccount.TabIndex = 7;
+        // 
         // buttons
         // 
         layout.SetColumnSpan(buttons, 2);
@@ -132,7 +157,7 @@ partial class PaymentForm
         buttons.Controls.Add(save);
         buttons.Dock = DockStyle.Fill;
         buttons.FlowDirection = FlowDirection.RightToLeft;
-        buttons.Location = new Point(23, 213);
+        buttons.Location = new Point(23, 253);
         buttons.Name = "buttons";
         buttons.Size = new Size(434, 54);
         buttons.TabIndex = 7;
@@ -161,7 +186,7 @@ partial class PaymentForm
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         CancelButton = cancel;
-        ClientSize = new Size(480, 290);
+        ClientSize = new Size(480, 330);
         Controls.Add(layout);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
