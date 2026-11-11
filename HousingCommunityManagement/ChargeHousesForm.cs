@@ -11,6 +11,7 @@ public partial class ChargeHousesForm : Form
     public ChargeHousesForm(MonthlyBillingService billing, HouseholdService households) : this()
     {
         this.billing = billing;
+        chargeDate.Value = DateTime.Today;
         available = households.GetAll().Where(h => h.IsActive).ToList();
         year.Value = DateTime.Today.Year;
         MonthSelectors[DateTime.Today.Month - 1].Checked = true;
@@ -52,7 +53,13 @@ public partial class ChargeHousesForm : Form
         if (!useMonthlyDue.Enabled && useMonthlyDue.Checked) useMonthlyDue.Checked = false;
         if (selectedYear <= 9998 && dueDatesYear != selectedYear)
         {
-            for (var i = 0; i < MonthDueEditors.Length; i++) MonthDueEditors[i].Value = MonthlyBillingService.DueDate(selectedYear, i + 1);
+            MoveToYear(chargeDate, selectedYear);
+            MoveToYear(sharedDue, selectedYear);
+            for (var i = 0; i < MonthDueEditors.Length; i++)
+            {
+                if (dueDatesYear == 0) MonthDueEditors[i].Value = MonthlyBillingService.DueDate(selectedYear, i + 1);
+                else MoveToYear(MonthDueEditors[i], selectedYear);
+            }
             dueDatesYear = selectedYear;
         }
         var selected = SelectedMonths;
@@ -69,6 +76,11 @@ public partial class ChargeHousesForm : Form
         }
         monthlyDueGrid.ResumeLayout();
         MinimumSize = new Size(950, useMonthlyDue.Checked ? 640 : 560);
+    }
+    private static void MoveToYear(DateTimePicker picker, int selectedYear)
+    {
+        var value = picker.Value;
+        picker.Value = new DateTime(selectedYear, value.Month, Math.Min(value.Day, DateTime.DaysInMonth(selectedYear, value.Month)));
     }
     private void AmountChanged(object? sender, EventArgs e) => UpdateHouseSelection();
     private void RefreshClicked(object? sender, EventArgs e)
@@ -126,8 +138,8 @@ public partial class ChargeHousesForm : Form
         {
             var ids = houses.CheckedItems.Cast<HouseOption>().Select(h => h.Id).ToArray();
             var dates = useMonthlyDue.Checked ? SelectedMonths.ToDictionary(m => m, m => MonthDueEditors[m - 1].Value.Date) : null;
-            var count = billing.GenerateMonths((int)year.Value, SelectedMonths, chargeAmount.Value, useSharedDue.Checked ? sharedDue.Value : null, ids, dates);
-            MessageBox.Show(this, $"Created {count} monthly charge(s) at RM {chargeAmount.Value:N2} per house per month. Existing charges were retained.", "Charges created");
+            var count = billing.GenerateMonths((int)year.Value, SelectedMonths, chargeAmount.Value, useSharedDue.Checked ? sharedDue.Value : null, ids, dates, chargeDate.Value.Date);
+            MessageBox.Show(this, $"Created {count} monthly charge(s) at RM {chargeAmount.Value:N2} per house per month, dated {chargeDate.Value:dd MMM yyyy}. Existing charges were retained.", "Charges created");
             DialogResult = DialogResult.OK;
         }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not charge houses", MessageBoxButtons.OK, MessageBoxIcon.Warning); }

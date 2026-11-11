@@ -46,7 +46,7 @@ public interface IAccountingRepository
     void SaveAccount(Account account);
     void SaveAccountingSettings(AccountingSettings settings);
     List<JournalEntry> GetJournal();
-    void StartAccounting(Dictionary<int, decimal> openingCashBalances);
+    void StartAccounting(Dictionary<int, decimal> openingCashBalances, DateTime openingDate);
 }
 public sealed class AccountingService(IAccountingRepository repository)
 {
@@ -63,10 +63,12 @@ public sealed class AccountingService(IAccountingRepository repository)
         repository.SaveAccount(account);
     }
     public void SaveSettings(AccountingSettings settings) => repository.SaveAccountingSettings(settings);
-    public void Start(Dictionary<int, decimal> openingCashBalances)
+    public void Start(Dictionary<int, decimal> openingCashBalances, DateTime? openingDate = null)
     {
         if (openingCashBalances.Values.Any(v => v < 0 || v > 1000000000 || decimal.Round(v, 2) != v)) throw new ArgumentException("Opening cash/bank balances must be from RM 0 to RM 1 billion with at most two decimals.");
-        repository.StartAccounting(openingCashBalances);
+        var date = (openingDate ?? DateTime.Today).Date;
+        if (date.Year < 1900 || date > DateTime.Today) throw new ArgumentException("Choose an opening date from 1900 through today.");
+        repository.StartAccounting(openingCashBalances, date);
     }
 }
 

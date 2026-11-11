@@ -109,7 +109,7 @@ public sealed class ExpenseService(IExpenseRepository repository)
         if (bill.IsPosted || bill.CancelledDate.HasValue) throw new ArgumentException("Posted and cancelled expenses cannot be edited. Use a reversal or cancellation.");
         if (bill.Kind is not ("Supplier bill" or "Reimbursement claim" or "Direct expense")) throw new ArgumentException("Choose a valid expense type.");
         bill.Description = Text(bill.Description, 500, "Description", true); bill.Reference = Text(bill.Reference, 150, "Invoice/receipt reference");
-        if (bill.DocumentDate.Date > DateTime.Today || bill.AccountingDate.Date > DateTime.Today) throw new ArgumentException("Document and accounting dates cannot be in the future.");
+        if (bill.DocumentDate.Year < 1900 || bill.AccountingDate.Year < 1900 || bill.DocumentDate.Date > DateTime.Today || bill.AccountingDate.Date > DateTime.Today) throw new ArgumentException("Document and accounting dates must be from 1900 through today.");
         if (bill.DueDate?.Date < bill.DocumentDate.Date) throw new ArgumentException("Due date cannot precede the document date.");
         if (bill.Lines.Count is < 1 or > 100) throw new ArgumentException("Add between 1 and 100 expense lines.");
         foreach (var line in bill.Lines)
@@ -136,7 +136,7 @@ public sealed class ExpenseService(IExpenseRepository repository)
     }
     private static void ValidateDate(DateTime date)
     {
-        if (date.Date > DateTime.Today) throw new ArgumentException("The recorded date cannot be in the future.");
+        if (date.Year < 1900 || date.Date > DateTime.Today) throw new ArgumentException("Choose a recorded date from 1900 through today.");
     }
     public void Pay(int id, decimal amount, DateTime date, int? cashAccountId, string reference)
     {

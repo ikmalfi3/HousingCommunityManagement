@@ -134,7 +134,7 @@ public sealed partial class HouseholdRepository : IAccountingRepository
             ?? throw new ArgumentException("The original accounting entry is missing. This transaction cannot be posted.");
         return entry.Lines.Single(l => debit ? l.Debit > 0 : l.Credit > 0).AccountId;
     }
-    public void StartAccounting(Dictionary<int, decimal> openingCashBalances)
+    public void StartAccounting(Dictionary<int, decimal> openingCashBalances, DateTime openingDate)
     {
         using var db = new HouseholdDbContext(databasePath); using var tx = db.Database.BeginTransaction();
         var s = db.AccountingSetup.Single();
@@ -142,14 +142,41 @@ public sealed partial class HouseholdRepository : IAccountingRepository
         ValidateSetup(db, s);
         var cashIds = db.Accounts.Where(a => a.IsActive && a.IsCashBank).Select(a => a.Id).ToHashSet();
         if (!cashIds.SetEquals(openingCashBalances.Keys) || openingCashBalances.Values.Any(v => v < 0 || decimal.Round(v, 2) != v)) throw new ArgumentException("Enter an opening balance for every active cash/bank account.");
-        var today = DateTime.Today;
+        var startDate = openingDate.Date;
+        if (startDate.Year < 1900 || startDate > DateTime.Today) throw new ArgumentException("Choose an opening date from 1900 through today.");
         foreach (var pair in openingCashBalances.Where(p => p.Value > 0))
-            AddJournal(db, today, "OpeningCash", pair.Key, "Opening cash/bank balance", new() { AccountId = pair.Key, Debit = pair.Value }, new() { AccountId = s.OpeningEquityAccountId, Credit = pair.Value });
-        foreach (var c in db.MonthlyCharges.Include(c => c.Payments).ToList().Where(c => c.Balance > 0))
-            AddJournal(db, today, "OpeningCharge", c.Id, $"Opening receivable: house {HouseNumber(db, c.HouseholdId)}, {c.Year}-{c.Month:00}", new() { AccountId = s.ReceivableAccountId, Debit = c.Balance }, new() { AccountId = s.OpeningEquityAccountId, Credit = c.Balance });
-        foreach (var r in db.Renovations.ToList().Where(r => r.DepositCollectedDate.HasValue && !r.DepositReturnedDate.HasValue && r.DepositAmount > 0))
-            AddJournal(db, today, "OpeningDeposit", r.Id, $"Opening held deposit: house {HouseNumber(db, r.HouseholdId)}, {r.Description}", new() { AccountId = s.OpeningEquityAccountId, Debit = r.DepositAmount }, new() { AccountId = s.DepositAccountId, Credit = r.DepositAmount });
-        s.StartedOn = today; db.SaveChanges(); tx.Commit();
+            AddJournal(db, startDate, "OpeningCash", pair.Key, "Opening cash/bank balance", new() { AccountId = pair.Key, Debit = pair.Value }, new() { AccountId = s.OpeningEquityAccountId, Credit = pair.Value });
+        foreach (var c in db.MonthlyCharges.Include(c => c.Payments).ToList())
+        {
+            var broughtForward = !c.ChargeDate.HasValue || c.ChargeDate.Value.Date < startDate;
+            var openingBalance = c.Amount - c.Payments.Where(p => p.Date.Date < startDate).Sum(p => p.Amount);
+            if (broughtForward && openingBalance > 0)
+                AddJournal(db, startDate, "OpeningCharge", c.Id, $"Opening receivable: house {HouseNumber(db, c.HouseholdId)}, {c.Year}-{c.Month:00}", new() { AccountId = s.ReceivableAccountId, Debit = openingBalance }, new() { AccountId = s.OpeningEquityAccountId, Credit = openingBalance });
+            else if (!broughtForward)
+                AddJournal(db, c.ChargeDate!.Value, "MonthlyCharge", c.Id, $"Maintenance charge: house {HouseNumber(db, c.HouseholdId)}, {c.Year}-{c.Month:00}", new() { AccountId = s.ReceivableAccountId, Debit = c.Amount }, new() { AccountId = s.IncomeAccountId, Credit = c.Amount });
+            foreach (var p in c.Payments.Where(p => p.Date.Date >= startDate))
+            {
+                MonthlyBillingService.ValidatePaymentChargeDates([c], p.Date);
+                var cash = CashAccount(db, p.CashAccountId, true);
+                AddJournal(db, p.Date, "MaintenancePayment", p.Id, $"Maintenance payment: house {HouseNumber(db, c.HouseholdId)}. {p.Reference}", new() { AccountId = cash, Debit = p.Amount }, new() { AccountId = s.ReceivableAccountId, Credit = p.Amount });
+            }
+        }
+        foreach (var r in db.Renovations.ToList().Where(r => r.DepositCollectedDate.HasValue && r.DepositAmount > 0))
+        {
+            if (r.DepositCollectedDate!.Value.Date < startDate && (!r.DepositReturnedDate.HasValue || r.DepositReturnedDate.Value.Date >= startDate))
+                AddJournal(db, startDate, "OpeningDeposit", r.Id, $"Opening held deposit: house {HouseNumber(db, r.HouseholdId)}, {r.Description}", new() { AccountId = s.OpeningEquityAccountId, Debit = r.DepositAmount }, new() { AccountId = s.DepositAccountId, Credit = r.DepositAmount });
+            if (r.DepositCollectedDate.Value.Date >= startDate)
+            {
+                var cash = CashAccount(db, r.DepositReceivedAccountId, true);
+                AddJournal(db, r.DepositCollectedDate.Value, "RenovationCollection", r.Id, $"Renovation deposit: house {HouseNumber(db, r.HouseholdId)}", new() { AccountId = cash, Debit = r.DepositAmount }, new() { AccountId = s.DepositAccountId, Credit = r.DepositAmount });
+            }
+            if (r.DepositReturnedDate.HasValue && r.DepositReturnedDate.Value.Date >= startDate)
+            {
+                var cash = CashAccount(db, r.DepositReturnedAccountId, false);
+                AddJournal(db, r.DepositReturnedDate.Value, "RenovationReturn", r.Id, $"Renovation deposit returned: house {HouseNumber(db, r.HouseholdId)}", new() { AccountId = s.DepositAccountId, Debit = r.DepositAmount }, new() { AccountId = cash, Credit = r.DepositAmount });
+            }
+        }
+        s.StartedOn = startDate; db.SaveChanges(); tx.Commit();
     }
 }
 

@@ -7,6 +7,7 @@ public sealed class MonthlyCharge
     public int Year { get; set; }
     public int Month { get; set; }
     public decimal Amount { get; set; }
+    public DateTime? ChargeDate { get; set; }
     public DateTime DueDate { get; set; }
     public List<MaintenancePayment> Payments { get; set; } = [];
     public decimal Paid => Payments.Sum(p => p.Amount);
@@ -26,7 +27,7 @@ public sealed class MaintenancePayment
 public interface IMonthlyBillingRepository
 {
     List<MonthlyCharge> GetCharges();
-    int GenerateMonths(int year, int[] months, decimal amountPerMonth, DateTime? sharedDueDate, int[]? householdIds, IReadOnlyDictionary<int, DateTime>? monthDueDates = null);
+    int GenerateMonths(int year, int[] months, decimal amountPerMonth, DateTime? sharedDueDate, int[]? householdIds, IReadOnlyDictionary<int, DateTime>? monthDueDates = null, DateTime? chargeDate = null);
     void RecordPayment(int chargeId, decimal amount, DateTime date, string reference, int? cashAccountId = null);
     int RecordPayments(IReadOnlyList<MaintenancePaymentRequest> payments, DateTime date, int? cashAccountId = null);
 }
@@ -52,7 +53,7 @@ public sealed class MonthlyBillingService(IMonthlyBillingRepository repository)
         if (monthDueDates.Count != months.Distinct().Count() || months.Any(m => !monthDueDates.ContainsKey(m)))
             throw new ArgumentException("Provide one due date for each selected month, and no unselected months.");
     }
-    public int GenerateMonths(int year, IEnumerable<int> months, decimal amountPerMonth, DateTime? sharedDueDate = null, IEnumerable<int>? householdIds = null, IReadOnlyDictionary<int, DateTime>? monthDueDates = null)
+    public int GenerateMonths(int year, IEnumerable<int> months, decimal amountPerMonth, DateTime? sharedDueDate = null, IEnumerable<int>? householdIds = null, IReadOnlyDictionary<int, DateTime>? monthDueDates = null, DateTime? chargeDate = null)
     {
         ValidateAmount(amountPerMonth);
         var selected = months.Distinct().Order().ToArray();
@@ -62,7 +63,18 @@ public sealed class MonthlyBillingService(IMonthlyBillingRepository repository)
         var houses = householdIds?.Distinct().ToArray();
         if (houses is { Length: 0 }) throw new ArgumentException("Select at least one house to charge.");
         var dates = monthDueDates?.ToDictionary(p => p.Key, p => p.Value.Date);
-        return repository.GenerateMonths(year, selected, amountPerMonth, sharedDueDate?.Date, houses, dates);
+        var date = (chargeDate ?? DateTime.Today).Date;
+        ValidateChargeDate(date);
+        return repository.GenerateMonths(year, selected, amountPerMonth, sharedDueDate?.Date, houses, dates, date);
+    }
+    public static void ValidatePaymentChargeDates(IEnumerable<MonthlyCharge> charges, DateTime paymentDate)
+    {
+        var latest = charges.Where(c => c.ChargeDate.HasValue).Select(c => c.ChargeDate!.Value.Date).DefaultIfEmpty(DateTime.MinValue).Max();
+        if (paymentDate.Date < latest) throw new ArgumentException($"Payment date must be on or after the latest selected charge date ({latest:dd MMM yyyy}).");
+    }
+    public static void ValidateChargeDate(DateTime date)
+    {
+        if (date.Year < 1900 || date.Date > DateTime.Today) throw new ArgumentException("Choose a charge date from 1900 through today.");
     }
     public void RecordPayment(int chargeId, decimal amount, DateTime date, string reference, int? cashAccountId = null)
     {

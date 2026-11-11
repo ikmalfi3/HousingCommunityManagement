@@ -27,6 +27,7 @@ public sealed partial class HouseholdRepository
         db.Database.ExecuteSqlRaw("CREATE UNIQUE INDEX IF NOT EXISTS IX_MonthlyCharges_HouseholdId_Year_Month ON MonthlyCharges(HouseholdId, Year, Month)");
         db.Database.ExecuteSqlRaw("CREATE TABLE IF NOT EXISTS MonthlyPayments (Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, MonthlyChargeId INTEGER NOT NULL REFERENCES MonthlyCharges(Id) ON DELETE RESTRICT, Amount INTEGER NOT NULL, Date TEXT NOT NULL, Reference TEXT NOT NULL, LegacyPaymentId INTEGER NULL)");
         db.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_MonthlyPayments_MonthlyChargeId ON MonthlyPayments(MonthlyChargeId)");
+        EnsureColumn(db, "MonthlyCharges", "ChargeDate", "TEXT NULL");
         EnsureColumn(db, "MonthlyPayments", "CashAccountId", "INTEGER NULL REFERENCES Accounts(Id) ON DELETE RESTRICT");
         db.Database.ExecuteSqlRaw("CREATE TABLE IF NOT EXISTS BillingUpgrades (Version INTEGER PRIMARY KEY)");
         using var command = db.Database.GetDbConnection().CreateCommand();
@@ -79,13 +80,16 @@ public sealed partial class HouseholdRepository
         using var db = new HouseholdDbContext(databasePath);
         return db.MonthlyCharges.Include(c => c.Payments).AsNoTracking().ToList();
     }
-    public int GenerateMonths(int year, int[] months, decimal amountPerMonth, DateTime? sharedDueDate, int[]? householdIds, IReadOnlyDictionary<int, DateTime>? monthDueDates = null)
+    public int GenerateMonths(int year, int[] months, decimal amountPerMonth, DateTime? sharedDueDate, int[]? householdIds, IReadOnlyDictionary<int, DateTime>? monthDueDates = null, DateTime? chargeDate = null)
     {
+        var postingDate = (chargeDate ?? DateTime.Today).Date;
+        MonthlyBillingService.ValidateChargeDate(postingDate);
         MonthlyBillingService.ValidateAmount(amountPerMonth);
         foreach (var month in months) MonthlyBillingService.DueDate(year, month);
         MonthlyBillingService.ValidateMonthDueDates(months, sharedDueDate, monthDueDates);
         using var db = new HouseholdDbContext(databasePath);
         using var tx = db.Database.BeginTransaction();
+        CheckPostingDate(db.AccountingSetup.Single(), postingDate);
         var billed = db.MonthlyCharges.Where(c => c.Year == year).Select(c => new { c.HouseholdId, c.Month }).ToList().Select(c => (c.HouseholdId, c.Month)).ToHashSet();
         var houses = db.Households.Where(h => h.IsActive).ToList();
         if (householdIds is not null)
@@ -95,7 +99,7 @@ public sealed partial class HouseholdRepository
             houses = houses.Where(h => householdIds.Contains(h.Id)).ToList();
         }
         var charges = houses.SelectMany(h => months.Distinct().Where(m => !billed.Contains((h.Id, m))).Select(m => new MonthlyCharge {
-            HouseholdId = h.Id, Year = year, Month = m, Amount = amountPerMonth,
+            HouseholdId = h.Id, Year = year, Month = m, Amount = amountPerMonth, ChargeDate = postingDate,
             DueDate = monthDueDates is null ? sharedDueDate?.Date ?? MonthlyBillingService.DueDate(year, m) : monthDueDates[m].Date })).ToList();
         db.MonthlyCharges.AddRange(charges); db.SaveChanges();
         var setup = db.AccountingSetup.Single();
@@ -103,7 +107,7 @@ public sealed partial class HouseholdRepository
         {
             ValidateSetup(db, setup);
             foreach (var c in charges)
-                AddJournal(db, DateTime.Today, "MonthlyCharge", c.Id, $"Maintenance charge: house {HouseNumber(db, c.HouseholdId)}, {c.Year}-{c.Month:00}",
+                AddJournal(db, postingDate, "MonthlyCharge", c.Id, $"Maintenance charge: house {HouseNumber(db, c.HouseholdId)}, {c.Year}-{c.Month:00}",
                     new() { AccountId = setup.ReceivableAccountId, Debit = c.Amount }, new() { AccountId = setup.IncomeAccountId, Credit = c.Amount });
             db.SaveChanges();
         }
@@ -117,6 +121,7 @@ public sealed partial class HouseholdRepository
         var ids = selected.Select(p => p.ChargeId).ToArray();
         var charges = db.MonthlyCharges.Include(c => c.Payments).Where(c => ids.Contains(c.Id)).ToDictionary(c => c.Id);
         if (charges.Count != selected.Count) throw new ArgumentException("A selected charge no longer exists. Refresh unpaid charges and review the batch.");
+        MonthlyBillingService.ValidatePaymentChargeDates(charges.Values, date);
         // Check every balance before inserting any source payment or journal entry.
         foreach (var request in selected)
             if (charges[request.ChargeId].Balance != request.ExpectedBalance)
@@ -143,6 +148,7 @@ public sealed partial class HouseholdRepository
         using var db = new HouseholdDbContext(databasePath);
         using var tx = db.Database.BeginTransaction();
         var charge = db.MonthlyCharges.Include(c => c.Payments).SingleOrDefault(c => c.Id == chargeId) ?? throw new ArgumentException("Select an existing monthly charge.");
+        MonthlyBillingService.ValidatePaymentChargeDates([charge], date);
         if (amount <= 0 || amount > charge.Balance) throw new ArgumentException("Payment must be greater than zero and no more than the outstanding balance for this month.");
         var setup = db.AccountingSetup.Single(); CheckPostingDate(setup, date);
         var cash = CashAccount(db, cashAccountId, true);

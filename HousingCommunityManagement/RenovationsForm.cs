@@ -11,6 +11,8 @@ public partial class RenovationsForm : Form
     public RenovationsForm(RenovationService renovations, HouseholdService households) : this()
     {
         this.renovations = renovations; this.households = households;
+        actionDate.MinDate = new DateTime(1900, 1, 1);
+        actionDate.MaxDate = DateTime.Today;
         Shown += (_, _) => RefreshRecords();
     }
     private void RefreshClicked(object? sender, EventArgs e) => RefreshRecords();

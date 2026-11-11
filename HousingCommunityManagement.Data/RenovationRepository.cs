@@ -51,6 +51,8 @@ public sealed partial class HouseholdRepository : IRenovationRepository
         using var tx = db.Database.BeginTransaction();
         var r = db.Renovations.SingleOrDefault(x => x.Id == id) ?? throw new ArgumentException("Select an existing renovation.");
         var setup = db.AccountingSetup.Single();
+        date = date.Date;
+        if (date.Year < 1900 || date > DateTime.Today) throw new ArgumentException("Choose a recorded date from 1900 through today.");
         if (r.IsArchived && action != "Return") throw new ArgumentException("Only a deposit return can be recorded for an archived renovation.");
         switch (action)
         {

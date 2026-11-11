@@ -116,10 +116,14 @@ public partial class BatchMaintenancePaymentForm : Form
     {
         var selected = drafts.Values.Where(d => d.Selected).ToList(); var total = 0m; var invalid = 0;
         foreach (var d in selected) { if (TryAmount(d, out var amount)) total += amount; else invalid++; }
+        var latestChargeDate = selected.Where(d => d.Charge.ChargeDate.HasValue).Select(d => d.Charge.ChargeDate!.Value.Date).DefaultIfEmpty(DateTime.MinValue).Max();
+        var invalidDate = paymentDate.Value.Date < latestChargeDate;
         summary.Text = $"{selected.Count} payments selected / RM {total:N2} total" + (invalid > 0 ? $" / {invalid} invalid amount(s)" : "")
             + Environment.NewLine + "Only selected visible rows save. Filter changes clear hidden selections. Edit amounts for partial payments.";
-        summary.ForeColor = invalid > 0 ? Color.Firebrick : SystemColors.ControlText;
-        save.Enabled = selected.Count > 0 && invalid == 0 && cashAccount.SelectedItem is Account;
+        if (latestChargeDate != DateTime.MinValue) summary.Text += Environment.NewLine + $"Earliest payment date for selected charges: {latestChargeDate:dd MMM yyyy}.";
+        if (invalidDate) summary.Text += " Choose a payment date on or after this date.";
+        summary.ForeColor = invalid > 0 || invalidDate ? Color.Firebrick : SystemColors.ControlText;
+        save.Enabled = selected.Count > 0 && invalid == 0 && !invalidDate && cashAccount.SelectedItem is Account;
     }
     private void SetVisibleSelection(bool selected)
     {
@@ -157,6 +161,7 @@ public partial class BatchMaintenancePaymentForm : Form
                 if (!TryAmount(d, out var amount)) throw new ArgumentException($"Enter a valid payment no greater than RM {d.Charge.Balance:N2} for house {d.House}, {new DateTime(d.Charge.Year, d.Charge.Month, 1):MMM yyyy}.");
                 payments.Add(new MaintenancePaymentRequest(d.Charge.Id, amount, d.Charge.Balance, d.Reference));
             }
+            MonthlyBillingService.ValidatePaymentChargeDates(selected.Select(d => d.Charge), paymentDate.Value);
             MonthlyBillingService.ValidatePaymentBatch(payments, paymentDate.Value);
             if (MessageBox.Show(this, $"Record {payments.Count} payments totalling RM {payments.Sum(p => p.Amount):N2} for {selected.Select(d => d.Charge.HouseholdId).Distinct().Count()} house(s)?\nPayment date: {paymentDate.Value:dd MMM yyyy}\nReceived into: {account.DisplayName}\n\nThis records money already received outside the app. All selected rows will be saved together.", "Record multiple payments", MessageBoxButtons.OKCancel, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.OK) return;
             save.Enabled = false;

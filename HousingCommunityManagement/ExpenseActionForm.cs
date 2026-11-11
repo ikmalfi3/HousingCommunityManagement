@@ -18,6 +18,11 @@ public partial class ExpenseActionForm : Form
             account.DisplayMember = nameof(Account.DisplayName); account.ValueMember = nameof(Account.Id);
             account.DataSource = accounting.GetAccounts().Where(a => a.IsCashBank && a.IsActive).ToList(); account.SelectedValue = accounting.GetSettings().PaymentAccountId;
         }
+        var earliest = action == "Reverse" && payment is not null ? payment.Date.Date : bill.AccountingDate.Date;
+        if (action != "Reverse") earliest = bill.Payments.Where(p => p.ReversedDate.HasValue).Select(p => p.ReversedDate!.Value.Date).Append(earliest).Max();
+        var started = expenses.Accounting?.GetSettings().StartedOn;
+        if (started.HasValue && started.Value.Date > earliest) earliest = started.Value.Date;
+        date.MinDate = earliest;
         amount.Maximum = action == "Pay" ? bill.Balance : 1000000000;
         amount.Value = action == "Pay" ? bill.Balance : payment?.Amount ?? bill.Total;
         amount.Enabled = account.Enabled = action == "Pay";

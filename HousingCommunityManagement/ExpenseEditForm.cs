@@ -25,6 +25,7 @@ public partial class ExpenseEditForm : Form
             var row = lines.Rows[lines.Rows.Add()]; row.Cells[1].Value = ""; row.Cells[2].Value = 0m;
         }
         documentDate.MaxDate = accountingDate.MaxDate = paymentDate.MaxDate = DateTime.Today;
+        documentDate.MinDate = accountingDate.MinDate = paymentDate.MinDate = new DateTime(1900, 1, 1);
     }
     private void BindChoices(int? selectedPayee = null)
     {

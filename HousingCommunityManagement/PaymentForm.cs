@@ -11,6 +11,7 @@ public partial class PaymentForm : Form
         heading.Text = $"House {house} / {new DateTime(charge.Year, charge.Month, 1):MMM yyyy}\nOutstanding: RM {charge.Balance:N2}";
         amount.Maximum = charge.Balance; amount.Value = charge.Balance;
         date.MaxDate = DateTime.Today;
+        if (charge.ChargeDate.HasValue) date.MinDate = charge.ChargeDate.Value.Date;
         if (billing.Accounting is { } accounting)
         {
             cashAccount.DisplayMember = nameof(Account.DisplayName);

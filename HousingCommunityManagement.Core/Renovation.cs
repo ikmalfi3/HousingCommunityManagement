@@ -51,7 +51,7 @@ public sealed class RenovationService(IRenovationRepository repository)
     }
     public void RecordAction(int id, string action, DateTime date, int? cashAccountId = null)
     {
-        if (date.Date > DateTime.Today) throw new ArgumentException("The recorded date cannot be in the future.");
+        if (date.Year < 1900 || date.Date > DateTime.Today) throw new ArgumentException("Choose a recorded date from 1900 through today.");
         repository.RecordRenovationAction(id, action, date.Date, cashAccountId);
     }
 }

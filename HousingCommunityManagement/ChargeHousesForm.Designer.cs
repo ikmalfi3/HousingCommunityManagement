@@ -39,6 +39,8 @@ partial class ChargeHousesForm
     private FlowLayoutPanel amountPanel;
     private Label amountLabel;
     private NumericUpDown chargeAmount;
+    private Label chargeDateLabel;
+    private DateTimePicker chargeDate;
     private CheckBox useMonthlyDue;
     private GroupBox monthlyDueGroup;
     private TableLayoutPanel monthlyDueGrid;
@@ -106,6 +108,8 @@ partial class ChargeHousesForm
         amountPanel = new FlowLayoutPanel();
         amountLabel = new Label();
         chargeAmount = new NumericUpDown();
+        chargeDateLabel = new Label();
+        chargeDate = new DateTimePicker();
         accountDefaults = new TableLayoutPanel();
         receivableAccountLabel = new Label();
         receivableAccount = new TextBox();
@@ -418,6 +422,19 @@ partial class ChargeHousesForm
         // 
         amountPanel.Controls.Add(amountLabel);
         amountPanel.Controls.Add(chargeAmount);
+        chargeDateLabel.Text = "Charge date";
+        chargeDateLabel.AutoSize = true;
+        chargeDateLabel.Margin = new Padding(24, 0, 6, 0);
+        chargeDateLabel.Padding = new Padding(0, 5, 0, 0);
+        chargeDate.Name = "chargeDate";
+        chargeDate.AccessibleName = "Charge date";
+        chargeDate.Format = DateTimePickerFormat.Custom;
+        chargeDate.CustomFormat = "dd MMM yyyy";
+        chargeDate.MinDate = new DateTime(1900, 1, 1);
+        chargeDate.Width = 160;
+        chargeDate.TabIndex = 2;
+        amountPanel.Controls.Add(chargeDateLabel);
+        amountPanel.Controls.Add(chargeDate);
         amountPanel.Dock = DockStyle.Fill;
         amountPanel.Location = new Point(23, 126);
         amountPanel.Name = "amountPanel";

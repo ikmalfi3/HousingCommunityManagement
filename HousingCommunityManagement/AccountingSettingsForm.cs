@@ -31,15 +31,11 @@ public partial class AccountingSettingsForm : Form
         Bind(receipt, accounts.Where(a => a.IsActive && a.IsCashBank), settings.ReceiptAccountId);
         Bind(payment, accounts.Where(a => a.IsActive && a.IsCashBank), settings.PaymentAccountId);
         Bind(payable, accounts.Where(a => a.IsActive && a.Type == "Liability"), settings.PayableAccountId);
-        openingGrid.Rows.Clear();
-        var opening = accounting.GetJournal().Where(e => e.Source == "OpeningCash").ToDictionary(e => e.SourceId, e => e.Lines.Sum(l => l.Debit));
-        foreach (var a in accounts.Where(a => a.IsActive && a.IsCashBank))
-        {
-            var index = openingGrid.Rows.Add(a.DisplayName, opening.GetValueOrDefault(a.Id).ToString("N2")); openingGrid.Rows[index].Tag = a.Id;
-        }
-        openingGrid.ReadOnly = settings.StartedOn.HasValue;
-        startButton.Enabled = !settings.StartedOn.HasValue;
-        if (settings.StartedOn.HasValue) setupNote.Text = $"Accounting active since {settings.StartedOn:dd MMM yyyy}. Defaults apply to future entries. Receipts and refunds keep the original receivable/deposit account. Opening balances are locked. View the journal and balances from Accounting in the sidebar.";
+        startButton.Visible = !settings.StartedOn.HasValue;
+        startStatus.Text = settings.StartedOn.HasValue
+            ? $"Accounting started on {settings.StartedOn:dd MMM yyyy}. Opening balances are locked."
+            : "After saving your initial accounts, start accounting to set the opening date and cash/bank balances before recording transactions.";
+        if (settings.StartedOn.HasValue) setupNote.Text = $"Accounting active since {settings.StartedOn:dd MMM yyyy}. Defaults apply to future entries. Opening balances are locked.";
     }
     private static void Bind(ComboBox control, IEnumerable<Account> values, int selected)
     {
@@ -81,15 +77,8 @@ public partial class AccountingSettingsForm : Form
         if (accounting is null) return;
         try
         {
-            openingGrid.EndEdit();
-            var balances = new Dictionary<int, decimal>();
-            foreach (DataGridViewRow row in openingGrid.Rows)
-            {
-                if (!decimal.TryParse(row.Cells[1].Value?.ToString(), out var amount)) throw new ArgumentException("Enter a valid opening balance for each cash/bank account.");
-                balances.Add((int)row.Tag!, amount);
-            }
-            if (MessageBox.Show(this, $"Start accounting today ({DateTime.Today:dd MMM yyyy})?\n\nCash/bank opening total: RM {balances.Values.Sum():N2}\nExisting outstanding maintenance and held deposits will be included once, against opening community funds.\n\nConfirm the entered balances include held deposit money. Opening balances cannot be re-entered after starting.", "Start accounting", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
-            SaveDefaults(); accounting.Start(balances); Reload();
+            using var dialog = new AccountingOpeningForm(accounting, SaveDefaults);
+            if (dialog.ShowDialog(this) == DialogResult.OK) Reload();
         }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "Could not start accounting"); }
     }
