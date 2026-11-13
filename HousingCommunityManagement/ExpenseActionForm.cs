@@ -19,7 +19,7 @@ public partial class ExpenseActionForm : Form
             account.DataSource = accounting.GetAccounts().Where(a => a.IsCashBank && a.IsActive).ToList(); account.SelectedValue = accounting.GetSettings().PaymentAccountId;
         }
         var earliest = action == "Reverse" && payment is not null ? payment.Date.Date : bill.AccountingDate.Date;
-        if (action != "Reverse") earliest = bill.Payments.Where(p => p.ReversedDate.HasValue).Select(p => p.ReversedDate!.Value.Date).Append(earliest).Max();
+        if (action != "Reverse") earliest = bill.Payments.Where(p => p.ReversedDate.HasValue).Select(p => p.ReversedDate!.Value.Date).Concat(bill.Settlements.Where(s => s.ReversedDate.HasValue).Select(s => s.ReversedDate!.Value.Date)).Append(earliest).Max();
         var started = expenses.Accounting?.GetSettings().StartedOn;
         if (started.HasValue && started.Value.Date > earliest) earliest = started.Value.Date;
         date.MinDate = earliest;

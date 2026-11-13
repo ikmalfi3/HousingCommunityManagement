@@ -49,6 +49,13 @@ public sealed partial class HouseholdRepository : IAccountingRepository
         db.Database.ExecuteSqlRaw("CREATE TABLE IF NOT EXISTS JournalLines (Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, JournalEntryId INTEGER NOT NULL REFERENCES JournalEntries(Id) ON DELETE RESTRICT, AccountId INTEGER NOT NULL REFERENCES Accounts(Id) ON DELETE RESTRICT, Debit INTEGER NOT NULL, Credit INTEGER NOT NULL)");
         db.Database.ExecuteSqlRaw("CREATE INDEX IF NOT EXISTS IX_JournalLines_JournalEntryId ON JournalLines(JournalEntryId)");
         EnsureColumn(db, "AccountingSetup", "PayableAccountId", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "AccountingSetup", "LockedThrough", "TEXT NULL");
+        EnsureColumn(db, "AccountingSetup", "AssetPurchaseAccountId", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "AccountingSetup", "SupplierDepositAccountId", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "AccountingSetup", "PrepaymentAccountId", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "AccountingSetup", "AccumulatedDepreciationAccountId", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "AccountingSetup", "DepreciationExpenseAccountId", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "AccountingSetup", "WriteOffExpenseAccountId", "INTEGER NOT NULL DEFAULT 0");
         if (!db.AccountingSetup.Any())
         {
             Account Seed(string code, string name, string type, bool cash = false)
@@ -68,6 +75,7 @@ public sealed partial class HouseholdRepository : IAccountingRepository
             db.AccountingSetup.Add(new AccountingSettings { ReceivableAccountId = receivable.Id, IncomeAccountId = income.Id, DepositAccountId = deposit.Id, ReceiptAccountId = bank.Id, PaymentAccountId = bank.Id, OpeningEquityAccountId = equity.Id });
             db.SaveChanges();
         }
+        EnsureRegisterDefaults(db);
         tx?.Commit();
     }
     public List<Account> GetAccounts() { using var db = new HouseholdDbContext(databasePath); return db.Accounts.AsNoTracking().OrderBy(a => a.Code).ToList(); }
@@ -84,6 +92,11 @@ public sealed partial class HouseholdRepository : IAccountingRepository
         RequireAccount(db, s.ReceivableAccountId, "Asset"); RequireAccount(db, s.IncomeAccountId, "Income");
         if (s.PayableAccountId != 0) RequireAccount(db, s.PayableAccountId, "Liability");
         RequireAccount(db, s.DepositAccountId, "Liability"); RequireAccount(db, s.OpeningEquityAccountId, "Equity");
+        var assets = new[] { s.AssetPurchaseAccountId, s.SupplierDepositAccountId, s.PrepaymentAccountId, s.AccumulatedDepreciationAccountId };
+        foreach (var id in assets) { RequireAccount(db, id, "Asset"); if (id == s.ReceivableAccountId) throw new ArgumentException("Register defaults cannot use the maintenance receivable account."); }
+        if (assets.Take(3).Contains(s.AccumulatedDepreciationAccountId)) throw new ArgumentException("Accumulated depreciation must use a separate account.");
+        RequireAccount(db, s.DepreciationExpenseAccountId, "Expense");
+        RequireAccount(db, s.WriteOffExpenseAccountId, "Expense");
         RequireAccount(db, s.ReceiptAccountId, "Asset", true); RequireAccount(db, s.PaymentAccountId, "Asset", true);
     }
     public void SaveAccountingSettings(AccountingSettings settings)
@@ -91,8 +104,20 @@ public sealed partial class HouseholdRepository : IAccountingRepository
         using var db = new HouseholdDbContext(databasePath); using var tx = db.Database.BeginTransaction();
         var savedPayable = db.AccountingSetup.Single().PayableAccountId;
         if (settings.PayableAccountId == 0) settings.PayableAccountId = savedPayable;
+        if (settings.AssetPurchaseAccountId == 0) settings.AssetPurchaseAccountId = db.AccountingSetup.Single().AssetPurchaseAccountId;
+        if (settings.SupplierDepositAccountId == 0) settings.SupplierDepositAccountId = db.AccountingSetup.Single().SupplierDepositAccountId;
+        if (settings.PrepaymentAccountId == 0) settings.PrepaymentAccountId = db.AccountingSetup.Single().PrepaymentAccountId;
+        if (settings.AccumulatedDepreciationAccountId == 0) settings.AccumulatedDepreciationAccountId = db.AccountingSetup.Single().AccumulatedDepreciationAccountId;
+        if (settings.DepreciationExpenseAccountId == 0) settings.DepreciationExpenseAccountId = db.AccountingSetup.Single().DepreciationExpenseAccountId;
+        if (settings.WriteOffExpenseAccountId == 0) settings.WriteOffExpenseAccountId = db.AccountingSetup.Single().WriteOffExpenseAccountId;
         ValidateSetup(db, settings);
         var current = db.AccountingSetup.Single();
+        current.AssetPurchaseAccountId = settings.AssetPurchaseAccountId;
+        current.SupplierDepositAccountId = settings.SupplierDepositAccountId;
+        current.PrepaymentAccountId = settings.PrepaymentAccountId;
+        current.AccumulatedDepreciationAccountId = settings.AccumulatedDepreciationAccountId;
+        current.DepreciationExpenseAccountId = settings.DepreciationExpenseAccountId;
+        current.WriteOffExpenseAccountId = settings.WriteOffExpenseAccountId;
         current.PayableAccountId = settings.PayableAccountId;
         current.ReceivableAccountId = settings.ReceivableAccountId; current.IncomeAccountId = settings.IncomeAccountId;
         current.DepositAccountId = settings.DepositAccountId; current.ReceiptAccountId = settings.ReceiptAccountId;
@@ -112,8 +137,11 @@ public sealed partial class HouseholdRepository : IAccountingRepository
     }
     private static void AddJournal(HouseholdDbContext db, DateTime date, string source, int sourceId, string description, params JournalLine[] lines)
     {
+        CheckPostingDate(db.AccountingSetup.Single(), date);
         if (lines.Length < 2 || lines.Any(l => l.Debit < 0 || l.Credit < 0 || (l.Debit > 0 && l.Credit > 0) || decimal.Round(l.Debit, 2) != l.Debit || decimal.Round(l.Credit, 2) != l.Credit) || lines.Sum(l => l.Debit) != lines.Sum(l => l.Credit)) throw new ArgumentException("Journal entries must balance to the sen.");
         if (db.JournalEntries.Any(e => e.Source == source && e.SourceId == sourceId)) throw new ArgumentException("This transaction has already been posted.");
+        var cashIds = lines.Select(l => l.AccountId).ToArray();
+        if (db.BankReconciliations.Any(r => r.IsFinalized && cashIds.Contains(r.AccountId) && date.Date >= r.From && date.Date <= r.To)) throw new ArgumentException("A bank statement for this account and date is finalized. Reopen it before adding a backdated cash entry.");
         db.JournalEntries.Add(new JournalEntry { Date = date.Date, Source = source, SourceId = sourceId, Description = description, Lines = lines.ToList() });
     }
     private static int CashAccount(HouseholdDbContext db, int? selected, bool receipt)
@@ -124,6 +152,7 @@ public sealed partial class HouseholdRepository : IAccountingRepository
     }
     private static void CheckPostingDate(AccountingSettings s, DateTime date)
     {
+        if (s.LockedThrough.HasValue && date.Date <= s.LockedThrough.Value.Date) throw new ArgumentException($"Transactions through {s.LockedThrough:dd MMM yyyy} are locked. Review the lock in Accounting before posting here.");
         if (s.StartedOn.HasValue && date.Date < s.StartedOn.Value.Date) throw new ArgumentException($"Accounting started on {s.StartedOn:dd MMM yyyy}. Use a date on or after that date.");
     }
     private static string HouseNumber(HouseholdDbContext db, int id) => db.Households.Where(h => h.Id == id).Select(h => h.HouseNumber).Single();
@@ -134,18 +163,20 @@ public sealed partial class HouseholdRepository : IAccountingRepository
             ?? throw new ArgumentException("The original accounting entry is missing. This transaction cannot be posted.");
         return entry.Lines.Single(l => debit ? l.Debit > 0 : l.Credit > 0).AccountId;
     }
-    public void StartAccounting(Dictionary<int, decimal> openingCashBalances, DateTime openingDate)
+    public void StartAccounting(Dictionary<int, decimal> openingCashBalances, DateTime openingDate, OpeningDetails? details = null) => BuildOpening(openingCashBalances, openingDate, details, false);
+    public List<JournalLine> PreviewOpening(Dictionary<int, decimal> cash, DateTime date, OpeningDetails details) => BuildOpening(cash, date, details, true);
+    private List<JournalLine> BuildOpening(Dictionary<int, decimal> openingCashBalances, DateTime openingDate, OpeningDetails? details, bool preview)
     {
         using var db = new HouseholdDbContext(databasePath); using var tx = db.Database.BeginTransaction();
         var s = db.AccountingSetup.Single();
         if (s.StartedOn.HasValue) throw new ArgumentException("Accounting has already started. Opening balances cannot be entered twice.");
         ValidateSetup(db, s);
         var cashIds = db.Accounts.Where(a => a.IsActive && a.IsCashBank).Select(a => a.Id).ToHashSet();
-        if (!cashIds.SetEquals(openingCashBalances.Keys) || openingCashBalances.Values.Any(v => v < 0 || decimal.Round(v, 2) != v)) throw new ArgumentException("Enter an opening balance for every active cash/bank account.");
+        if (!cashIds.SetEquals(openingCashBalances.Keys) || openingCashBalances.Values.Any(v => Math.Abs(v) > 1000000000m || decimal.Round(v, 2) != v)) throw new ArgumentException("Enter an opening balance for every active cash/bank account.");
         var startDate = openingDate.Date;
         if (startDate.Year < 1900 || startDate > DateTime.Today) throw new ArgumentException("Choose an opening date from 1900 through today.");
-        foreach (var pair in openingCashBalances.Where(p => p.Value > 0))
-            AddJournal(db, startDate, "OpeningCash", pair.Key, "Opening cash/bank balance", new() { AccountId = pair.Key, Debit = pair.Value }, new() { AccountId = s.OpeningEquityAccountId, Credit = pair.Value });
+        foreach (var pair in openingCashBalances.Where(p => p.Value != 0))
+            AddJournal(db, startDate, "OpeningCash", pair.Key, "Opening cash/bank balance", new() { AccountId = pair.Key, Debit = Math.Max(pair.Value, 0), Credit = Math.Max(-pair.Value, 0) }, new() { AccountId = s.OpeningEquityAccountId, Credit = Math.Max(pair.Value, 0), Debit = Math.Max(-pair.Value, 0) });
         foreach (var c in db.MonthlyCharges.Include(c => c.Payments).ToList())
         {
             var broughtForward = !c.ChargeDate.HasValue || c.ChargeDate.Value.Date < startDate;
@@ -176,7 +207,11 @@ public sealed partial class HouseholdRepository : IAccountingRepository
                 AddJournal(db, r.DepositReturnedDate.Value, "RenovationReturn", r.Id, $"Renovation deposit returned: house {HouseNumber(db, r.HouseholdId)}", new() { AccountId = s.DepositAccountId, Debit = r.DepositAmount }, new() { AccountId = cash, Credit = r.DepositAmount });
             }
         }
-        s.StartedOn = startDate; db.SaveChanges(); tx.Commit();
+        AddExtendedOpening(db, s, startDate, details ?? new OpeningDetails());
+        s.StartedOn = startDate; db.SaveChanges();
+        var result = db.JournalEntries.Include(e => e.Lines).Where(e => e.Source.StartsWith("Opening")).ToList().SelectMany(e => e.Lines).GroupBy(l => l.AccountId).Select(g => new JournalLine { AccountId = g.Key, Debit = g.Sum(l => l.Debit), Credit = g.Sum(l => l.Credit) }).ToList();
+        if (preview) tx.Rollback(); else tx.Commit();
+        return result;
     }
 }
 

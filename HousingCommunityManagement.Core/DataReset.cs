@@ -50,7 +50,7 @@ public sealed class DataResetService(IDataResetRepository repository)
         (DataResetCategory.Households, "Households, owners & contacts"),
         (DataResetCategory.Maintenance, "Maintenance charges & payments"),
         (DataResetCategory.Renovations, "Renovations & deposits (including archived)"),
-        (DataResetCategory.Expenses, "Expenses, payments & receipt attachments"),
+        (DataResetCategory.Expenses, "Income & expenditure, bills, payments & attachments"),
         (DataResetCategory.Payees, "Suppliers & claimants"),
         (DataResetCategory.ExpenseCategories, "Reset expense categories to defaults"),
         (DataResetCategory.Accounting, "Reset accounts, defaults, opening balances & journal"),

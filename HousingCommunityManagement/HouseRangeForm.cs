@@ -6,9 +6,7 @@ public partial class HouseRangeForm : Form
     public HouseRangeForm()
     {
         InitializeComponent();
-        prefix.TextChanged += PreviewChanged; start.ValueChanged += PreviewChanged;
-        end.ValueChanged += PreviewChanged; digits.ValueChanged += PreviewChanged;
-        save.Text = "Create houses";
+
     }
     public HouseRangeForm(HouseholdService service) : this() { this.service = service; }
     private void PreviewChanged(object? sender, EventArgs e) => preview.Text =

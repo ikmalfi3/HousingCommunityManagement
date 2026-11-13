@@ -1117,6 +1117,7 @@ partial class ChargeHousesForm
         decemberDuePanel.ResumeLayout(false);
         houseToolbar.ResumeLayout(false);
         houseToolbar.PerformLayout();
+        chargeDateLabel.Name = "chargeDateLabel";
         ResumeLayout(false);
     }
 }

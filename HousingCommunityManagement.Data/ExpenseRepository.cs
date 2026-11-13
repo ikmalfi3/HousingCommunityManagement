@@ -16,6 +16,7 @@ public sealed partial class HouseholdDbContext
         var c = builder.Entity<ExpenseCategory>(); c.Property(x => x.Name).UseCollation("NOCASE"); c.HasIndex(x => x.Name).IsUnique();
         c.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
         var b = builder.Entity<ExpenseBill>(); b.Ignore(x => x.Total); b.Ignore(x => x.Paid); b.Ignore(x => x.Balance); b.Ignore(x => x.Status);
+        JsonList(b.Property(x => x.Settlements));
         b.Property(x => x.Reference).UseCollation("NOCASE");
         b.HasIndex(x => new { x.PayeeId, x.Reference }).IsUnique().HasFilter("CancelledDate IS NULL AND Reference <> ''");
         b.HasOne<Payee>().WithMany().HasForeignKey(x => x.PayeeId).OnDelete(DeleteBehavior.Restrict);
@@ -46,6 +47,8 @@ public sealed partial class HouseholdRepository : IExpenseRepository
         db.Database.ExecuteSqlRaw("CREATE TABLE IF NOT EXISTS ExpenseLines (Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, ExpenseBillId INTEGER NOT NULL REFERENCES ExpenseBills(Id) ON DELETE RESTRICT, CategoryId INTEGER NOT NULL REFERENCES ExpenseCategories(Id) ON DELETE RESTRICT, AccountId INTEGER NOT NULL REFERENCES Accounts(Id) ON DELETE RESTRICT, Description TEXT NOT NULL, Amount INTEGER NOT NULL)");
         db.Database.ExecuteSqlRaw("CREATE TABLE IF NOT EXISTS ExpensePayments (Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, ExpenseBillId INTEGER NOT NULL REFERENCES ExpenseBills(Id) ON DELETE RESTRICT, CashAccountId INTEGER NOT NULL REFERENCES Accounts(Id) ON DELETE RESTRICT, Amount INTEGER NOT NULL, Date TEXT NOT NULL, Reference TEXT NOT NULL, ReversedDate TEXT NULL, ReversalReason TEXT NOT NULL)");
         db.Database.ExecuteSqlRaw("CREATE TABLE IF NOT EXISTS ExpenseAttachments (Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, ExpenseBillId INTEGER NOT NULL REFERENCES ExpenseBills(Id) ON DELETE RESTRICT, FileName TEXT NOT NULL, Content BLOB NOT NULL)");
+        EnsureColumn(db, "ExpenseBills", "IsOpeningBalance", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn(db, "ExpenseBills", "Settlements", "TEXT NOT NULL DEFAULT '[]'");
         var setup = db.AccountingSetup.Single();
         if (setup.PayableAccountId == 0)
         {
@@ -165,7 +168,7 @@ public sealed partial class HouseholdRepository : IExpenseRepository
     {
         RequireStarted(db, date);
         if (!bill.IsPosted || bill.CancelledDate.HasValue || amount <= 0 || amount > bill.Balance) throw new ArgumentException("Payment must be positive and no more than the balance of a posted, uncancelled expense.");
-        if (date.Date < bill.AccountingDate.Date || bill.Payments.Any(p => p.ReversedDate.HasValue && p.ReversedDate.Value.Date > date.Date)) throw new ArgumentException("Payment date must be on or after the expense accounting date and previous payment reversals.");
+        if (date.Date < bill.AccountingDate.Date || bill.Payments.Any(p => p.ReversedDate.HasValue && p.ReversedDate.Value.Date > date.Date) || bill.Settlements.Any(p => p.ReversedDate > date.Date)) throw new ArgumentException("Payment date must be on or after the expense accounting date and previous payment reversals.");
         var cash = CashAccount(db, cashAccountId, false);
         var payable = OriginalControlAccount(db, "ExpenseBill", "OpeningExpense", bill.Id, false);
         var payment = new ExpensePayment { ExpenseBillId = bill.Id, Amount = amount, Date = date.Date, CashAccountId = cash, Reference = reference };
@@ -181,6 +184,7 @@ public sealed partial class HouseholdRepository : IExpenseRepository
     private static void ReverseJournal(HouseholdDbContext db, string source, int sourceId, string reversalSource, DateTime date, string reason)
     {
         var original = db.JournalEntries.Include(e => e.Lines).Single(e => e.Source == source && e.SourceId == sourceId);
+        CheckReconciledEntry(db, original);
         AddJournal(db, date, reversalSource, sourceId, $"Reversal of entry {original.Id}: {reason}", original.Lines.Select(l => new JournalLine { AccountId = l.AccountId, Debit = l.Credit, Credit = l.Debit }).ToArray());
     }
     public void ReverseExpensePayment(int paymentId, DateTime date, string reason)
@@ -199,8 +203,8 @@ public sealed partial class HouseholdRepository : IExpenseRepository
         using var db = new HouseholdDbContext(databasePath); using var tx = db.Database.BeginTransaction();
         RequireStarted(db, date); var bill = FindBill(db, id);
         if (!bill.IsPosted || bill.CancelledDate.HasValue || bill.Paid != 0) throw new ArgumentException("Cancel a posted expense once, after reversing all its payments. A genuine payment must be refunded before its reversal is recorded.");
-        if (date.Date < bill.AccountingDate.Date || bill.Payments.Any(p => p.ReversedDate > date)) throw new ArgumentException("Cancellation date must be on or after posting and all payment reversals.");
-        ReverseJournal(db, "ExpenseBill", id, "ExpenseBillCancellation", date, reason);
+        if (date.Date < bill.AccountingDate.Date || bill.Payments.Any(p => p.ReversedDate > date) || bill.Settlements.Any(p => p.ReversedDate > date)) throw new ArgumentException("Cancellation date must be on or after posting and all payment reversals.");
+        ReverseJournal(db, bill.IsOpeningBalance ? "OpeningExpense" : "ExpenseBill", id, "ExpenseBillCancellation", date, reason);
         bill.CancelledDate = date.Date; bill.CancellationReason = reason; bill.Version++;
         db.SaveChanges(); tx.Commit();
     }

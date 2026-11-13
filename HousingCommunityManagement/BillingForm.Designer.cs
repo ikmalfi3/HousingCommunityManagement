@@ -457,11 +457,31 @@ partial class BillingForm
         summaryLayout.Controls.Add(summaryNote, 0, 4);
         Controls.Add(billingTabs);
 
+        Name = "BillingForm";
         AutoScaleDimensions = new SizeF(7F, 15F);
         AutoScaleMode = AutoScaleMode.Font;
         ClientSize = new Size(1050, 680);
         Text = "Billing & payments";
         Shown += RefreshClicked;
+        summaryToolbar.Name = "summaryToolbar";
+        summaryYearLabel.Name = "summaryYearLabel";
+        summaryRefresh.Name = "summaryRefresh";
+        summaryLegend.Name = "summaryLegend";
+        notDueLegend.Name = "notDueLegend";
+        overdueLegend.Name = "overdueLegend";
+        paidLegend.Name = "paidLegend";
+        unchargedLegend.Name = "unchargedLegend";
+        summaryNote.Name = "summaryNote";
+        layout.Name = "layout";
+        heading.Name = "heading";
+        toolbar.Name = "toolbar";
+        yearLabel.Name = "yearLabel";
+        year.Name = "year";
+        actions.Name = "actions";
+        generate.Name = "generate";
+        pay.Name = "pay";
+        grid.Name = "grid";
+        note.Name = "note";
         ResumeLayout(false);
     }
 }

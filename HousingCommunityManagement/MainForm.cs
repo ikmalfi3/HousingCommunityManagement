@@ -10,7 +10,8 @@ public partial class MainForm : Form
     private RenovationsForm? renovationsPage;
     private ExpensesForm? expensesPage;
     private AccountingForm? accountingPage;
-    private DashboardView? overview;
+    private ReportsForm? reportsPage;
+    private bool dashboardBound;
     private RenovationService? renovations;
     private readonly MonthlyBillingService? billing;
     public MainForm() { InitializeComponent(); }
@@ -25,6 +26,7 @@ public partial class MainForm : Form
     private void DashboardClicked(object? sender, EventArgs e) => ShowDashboard();
     private void ShowDashboard()
     {
+        CloseReportsPage();
         CloseAccountingPage();
         CloseExpensesPage();
         CloseRenovationsPage();
@@ -35,17 +37,9 @@ public partial class MainForm : Form
         dashboardButton.BackColor = Color.FromArgb(43, 65, 88);
         housesButton.BackColor = Color.FromArgb(25, 39, 57);
         if (service is null || billing is null || renovations is null) return;
-        if (overview is null)
+        if (!dashboardBound)
         {
-            foreach (var control in dashboardPanel.Controls.Cast<Control>().ToArray()) control.Dispose();
-            dashboardPanel.Controls.Clear();
-            dashboardPanel.ColumnStyles.Clear(); dashboardPanel.RowStyles.Clear();
-            dashboardPanel.ColumnCount = dashboardPanel.RowCount = 1;
-            dashboardPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            dashboardPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            dashboardPanel.Padding = Padding.Empty;
-            overview = new DashboardView(service, billing, renovations, NavigateDashboard);
-            dashboardPanel.Controls.Add(overview, 0, 0);
+            overview.BindServices(service, billing, renovations, NavigateDashboard); dashboardBound = true;
         }
         overview.Reload();
     }
@@ -61,6 +55,7 @@ public partial class MainForm : Form
     }
     private void HousesClicked(object? sender, EventArgs e)
     {
+        CloseReportsPage();
         if (service is null || householdPage is not null) return;
         CloseAccountingPage();
         CloseExpensesPage();
@@ -77,6 +72,7 @@ public partial class MainForm : Form
     }
     private void BillingClicked(object? sender, EventArgs e)
     {
+        CloseReportsPage();
         if (billing is null || service is null || billingPage is not null) return;
         CloseAccountingPage();
         CloseExpensesPage();
@@ -103,7 +99,8 @@ public partial class MainForm : Form
             if (dialog.ShowDialog(this) == DialogResult.OK)
             {
                 if (dialog.DataDeleted) { ShowDashboard(); return; }
-                if (billingPage is not null) { CloseBillingPage(); BillingClicked(sender, e); }
+                if (reportsPage is not null) { CloseReportsPage(); ReportsClicked(sender, e); }
+                else if (billingPage is not null) { CloseBillingPage(); BillingClicked(sender, e); }
                 else if (accountingPage is not null) { CloseAccountingPage(); AccountingClicked(sender, e); }
                 else if (expensesPage is not null) { CloseExpensesPage(); ExpensesClicked(sender, e); }
                 else if (renovationsPage is not null) { CloseRenovationsPage(); RenovationsClicked(sender, e); }
@@ -122,6 +119,7 @@ public partial class MainForm : Form
     }
     private void RenovationsClicked(object? sender, EventArgs e)
     {
+        CloseReportsPage();
         if (renovations is null || service is null || renovationsPage is not null) return;
         CloseAccountingPage();
         CloseExpensesPage();
@@ -139,6 +137,7 @@ public partial class MainForm : Form
     }
     private void ExpensesClicked(object? sender, EventArgs e)
     {
+        CloseReportsPage();
         if (service?.Expenses is not { } expenses || expensesPage is not null) return;
         CloseAccountingPage();
         CloseHouseholdPage(); CloseBillingPage(); CloseRenovationsPage();
@@ -155,6 +154,7 @@ public partial class MainForm : Form
     }
     private void AccountingClicked(object? sender, EventArgs e)
     {
+        CloseReportsPage();
         if (service?.Accounting is not { } accounting || accountingPage is not null) return;
         CloseHouseholdPage(); CloseBillingPage(); CloseRenovationsPage(); CloseExpensesPage();
         dashboardPanel.Visible = false;
@@ -168,5 +168,20 @@ public partial class MainForm : Form
         if (accountingPage is not null) { accountingPage.Close(); accountingPage.Dispose(); accountingPage = null; }
         accountingButton.BackColor = Color.FromArgb(25, 39, 57);
     }
-    private void MainClosing(object? sender, FormClosingEventArgs e) { CloseHouseholdPage(); CloseBillingPage(); CloseRenovationsPage(); CloseExpensesPage(); CloseAccountingPage(); }
+    private void ReportsClicked(object? sender, EventArgs e)
+    {
+        if (service?.Accounting is not { } accounting || reportsPage is not null) return;
+        CloseHouseholdPage(); CloseBillingPage(); CloseRenovationsPage(); CloseExpensesPage(); CloseAccountingPage();
+        dashboardPanel.Visible = false;
+        reportsPage = new ReportsForm(accounting) { TopLevel = false, FormBorderStyle = FormBorderStyle.None, Dock = DockStyle.Fill, MinimumSize = Size.Empty };
+        contentPanel.Controls.Add(reportsPage); reportsPage.Show(); reportsPage.BringToFront();
+        reportsButton.BackColor = Color.FromArgb(43, 65, 88);
+        dashboardButton.BackColor = housesButton.BackColor = billingButton.BackColor = Color.FromArgb(25, 39, 57);
+    }
+    private void CloseReportsPage()
+    {
+        if (reportsPage is not null) { reportsPage.Close(); reportsPage.Dispose(); reportsPage = null; }
+        reportsButton.BackColor = Color.FromArgb(25, 39, 57);
+    }
+    private void MainClosing(object? sender, FormClosingEventArgs e) { CloseReportsPage(); CloseHouseholdPage(); CloseBillingPage(); CloseRenovationsPage(); CloseExpensesPage(); CloseAccountingPage(); }
 }

@@ -5,6 +5,42 @@ var folder = Path.Combine(Path.GetTempPath(), "HouseholdChecks-" + Guid.NewGuid(
 Directory.CreateDirectory(folder);
 try
 {
+    var defaultsPath = Path.Combine(folder, "register-defaults.db");
+    var defaultsRepo = new HouseholdRepository(defaultsPath);
+    var defaultsService = new AccountingService(defaultsRepo);
+    var starter = defaultsService.GetSettings();
+    Require(defaultsService.GetAccounts().Count == 22, "All starter accounts are created");
+    Require(starter.RegisterAccount("Asset") == starter.AssetPurchaseAccountId && starter.RegisterAccount("Supplier deposit") == starter.SupplierDepositAccountId && starter.RegisterAccount("Prepayment") == starter.PrepaymentAccountId, "Register types resolve their configured defaults");
+    Require(starter.RegisterExpenseAccount("Depreciate") == starter.DepreciationExpenseAccountId && starter.RegisterExpenseAccount("Write off") == starter.WriteOffExpenseAccountId, "Register actions resolve expense defaults");
+    var replacement = new Account { Code = "1550", Name = "Office equipment custom", Type = "Asset" };
+    defaultsService.SaveAccount(replacement);
+    starter.AssetPurchaseAccountId = replacement.Id;
+    defaultsService.SaveSettings(starter);
+    var invalidDefaults = defaultsService.GetSettings();
+    invalidDefaults.SupplierDepositAccountId = invalidDefaults.ReceivableAccountId;
+    Reject(() => defaultsService.SaveSettings(invalidDefaults));
+    var protectedDefault = defaultsService.GetAccounts().Single(a => a.Id == starter.PrepaymentAccountId);
+    protectedDefault.IsActive = false;
+    Reject(() => defaultsService.SaveAccount(protectedDefault));
+    Require(new AccountingService(new HouseholdRepository(defaultsPath)).GetSettings().AssetPurchaseAccountId == replacement.Id, "Customized defaults survive restart");
+    // Simulate an older installation upgrading with a conflicting suggested code.
+    using (var legacyDefaults = new SqliteConnection($"Data Source={defaultsPath}"))
+    {
+        legacyDefaults.Open();
+        using var command = legacyDefaults.CreateCommand();
+        command.CommandText = "DELETE FROM AccountingDefaultUpgrades; UPDATE AccountingSetup SET SupplierDepositAccountId = 0; UPDATE Accounts SET Name = 'Existing custom account' WHERE Code = '1200';";
+        command.ExecuteNonQuery();
+    }
+    defaultsService = new AccountingService(new HouseholdRepository(defaultsPath));
+    var upgradedDefaults = defaultsService.GetSettings();
+    var upgradedAccounts = defaultsService.GetAccounts();
+    Require(upgradedDefaults.AssetPurchaseAccountId == replacement.Id && upgradedAccounts.Single(a => a.Id == upgradedDefaults.SupplierDepositAccountId).Code != "1200" && upgradedAccounts.Single(a => a.Code == "1200").Name == "Existing custom account", "Upgrade adds defaults without replacing user accounts or customized assignments");
+    Require(new AccountingService(new HouseholdRepository(defaultsPath)).GetAccounts().Count == upgradedAccounts.Count, "Upgrade is idempotent");
+    defaultsRepo.DeleteData(DataResetService.IncludeDependencies(DataResetCategory.Accounting));
+    var resetDefaults = new AccountingService(new HouseholdRepository(defaultsPath));
+    Require(resetDefaults.GetAccounts().Count == 22 && resetDefaults.GetSettings().SupplierDepositAccountId > 0 && resetDefaults.GetSettings().DepreciationExpenseAccountId > 0, "Complete deletion restores starter accounts and default assignments");
+    Console.WriteLine("PASS: starter accounts, default selection, validation, collision-safe upgrade, persistence and reset.");
+
     var historical = new AccountingService(new HouseholdRepository(Path.Combine(folder, "historical-opening.db")));
     var historicalBalances = historical.GetAccounts().Where(a => a.IsActive && a.IsCashBank).ToDictionary(a => a.Id, a => 123m);
     var openingDate = new DateTime(2023, 1, 1);
@@ -275,12 +311,15 @@ try
         c.Open(); using var cmd = c.CreateCommand(); cmd.CommandText = "DROP TABLE Renovations"; cmd.ExecuteNonQuery();
     }
     Require(new RenovationService(new HouseholdRepository(renovationPath)).GetAll().Count == 0 && renovationHouses.GetAll().Count == 1, "Existing databases gain renovations without losing houses");
+    CheckFinancialReports();
     CheckAccounting(folder);
     CheckExpenses(folder);
     CheckDataReset(folder);
     CheckDerivedFlags(folder);
     CheckMonthDueDates(folder);
     CheckBatchPayments(folder);
+    CheckCashTransactions(folder);
+    CheckAccountingOperations(folder);
     Console.WriteLine("PASS: renovations, deposits, returns and database upgrade.");
     Console.WriteLine("PASS: household checks, monthly generation, overlapping selections, due dates, shared deadlines, partial payments, rate snapshots and quarterly migration.");
 }
@@ -302,7 +341,7 @@ static void CheckAccounting(string folder)
     var accounts = accounting.GetAccounts();
     var bank = accounts.Single(a => a.Code == "1000"); var cash = accounts.Single(a => a.Code == "1010");
     var settings = accounting.GetSettings();
-    Require(!settings.StartedOn.HasValue && accounts.Count == 11, "Accounting setup is seeded without starting or posting");
+    Require(!settings.StartedOn.HasValue && accounts.Count == 22, "Accounting setup is seeded without starting or posting");
     billing.GenerateMonths(2026, [1], 100m, householdIds: [house.Id], chargeDate: DateTime.Today.AddDays(-1));
     var original = billing.GetCharges().Single();
     billing.RecordPayment(original.Id, 25, DateTime.Today.AddDays(-1), "Before accounting", cash.Id);
@@ -314,7 +353,7 @@ static void CheckAccounting(string folder)
     Require(renovations.GetAll(true).Single().DepositStatus == "Awaiting return", "Archived unfinished deposit still awaits return");
     Require(accounting.GetJournal().Count == 0, "Transactions before start do not fabricate historical ledger entries");
     Reject(() => accounting.Start(new Dictionary<int, decimal> { [bank.Id] = 1000 }));
-    Reject(() => accounting.Start(new Dictionary<int, decimal> { [bank.Id] = -1, [cash.Id] = 50 }));
+    Reject(() => accounting.Start(new Dictionary<int, decimal> { [bank.Id] = -1000000001m, [cash.Id] = 50 }));
     accounting.Start(new Dictionary<int, decimal> { [bank.Id] = 1000, [cash.Id] = 50 });
     Require(accounting.GetJournal().Count == 4, "Opening balances include cash, bank, outstanding charge and archived held deposit exactly once");
     Require(accounting.GetJournal().Single(e => e.Source == "OpeningCharge").Lines.Sum(l => l.Debit) == 75, "Opening receivable is unpaid balance, not total charge");
@@ -488,7 +527,7 @@ static void CheckExpenses(string folder)
         cmd.ExecuteNonQuery();
     }
     var upgraded = new HouseholdRepository(upgradePath);
-    Require(upgraded.GetAccountingSettings().StartedOn == DateTime.Today && upgraded.GetAccountingSettings().PayableAccountId > 0 && upgraded.GetJournal().Count == previousJournal && upgraded.GetExpenseCategories().Count == 4, "Previous accounting-enabled database upgrades without altering its ledger or opening balances");
+    Require(upgraded.GetAccountingSettings().StartedOn == DateTime.Today && upgraded.GetAccountingSettings().PayableAccountId > 0 && upgraded.GetJournal().Count == previousJournal && upgraded.GetExpenseCategories().Count == 8, "Previous accounting-enabled database upgrades without altering its ledger or opening balances");
     Console.WriteLine("PASS: expense drafts, attachments, posting, partial payments, claims, direct expenses, corrections, payable reconciliation and atomic rollback.");
 }
 
@@ -531,7 +570,7 @@ static void CheckDataReset(string folder)
         Require(repo.GetRenovations(true).Count == (selected.HasFlag(DataResetCategory.Renovations) ? 0 : 1), "Renovation deletion includes archived deposits");
         Require(repo.GetExpenses().Count == (selected.HasFlag(DataResetCategory.Expenses) ? 0 : 1), "Only selected expenses are deleted");
         Require(repo.GetPayees().Count == (selected.HasFlag(DataResetCategory.Payees) ? 0 : 1), "Only selected payees are deleted");
-        Require(repo.GetExpenseCategories().Count == 4 && repo.GetAccounts().Count == 11, "Default categories/accounts remain usable after reset");
+        Require(repo.GetExpenseCategories().Count == 8 && repo.GetAccounts().Count == 22, "Default categories/accounts remain usable after reset");
         var settings = repo.GetSettings();
         Require(settings.MonthlyMaintenanceFee == (selected.HasFlag(DataResetCategory.CommunitySettings) ? 0 : 100), "Community settings reset only when selected");
         if (selected.HasFlag(DataResetCategory.CommunitySettings)) Require(settings.FlagNames.Count == 0 && repo.GetAll().All(h => h.Flags.All(DerivedHouseFlags.IsManaged)), "Saved flag definitions/assignments clear; live automatic flags reflect remaining records");
@@ -720,4 +759,245 @@ static void CheckBatchPayments(string folder)
     var lines = accounting.GetJournal().SelectMany(e => e.Lines).ToList();
     Require(accounting.GetJournal().All(e => e.Lines.Sum(l => l.Debit) == e.Lines.Sum(l => l.Credit)) && lines.Where(l => l.AccountId == oldReceivable || l.AccountId == newReceivable.Id).Sum(l => l.Debit - l.Credit) == billing.GetCharges().Sum(c => c.Balance), "Batch journals balance and receivables reconcile to monthly charges");
     Console.WriteLine("PASS: multi-house/month payment batches, partial amounts, references, original accounts, stale balances, replay prevention and atomic rollback.");
+}
+
+static void CheckCashTransactions(string folder)
+{
+    var path = Path.Combine(folder, "general-money.db");
+    var repo = new HouseholdRepository(path); var accounting = new AccountingService(repo); var service = new CashTransactionService(repo);
+    var accounts = accounting.GetAccounts(); var bank = accounts.Single(a => a.Code == "1000"); var cash = accounts.Single(a => a.Code == "1010");
+    var expense = accounts.First(a => a.Type == "Expense"); var income = new Account { Code = "4210", Name = "Access card receipts", Type = "Income" };
+    var equipment = new Account { Code = "1220", Name = "Equipment", Type = "Asset" }; var deposit = new Account { Code = "1210", Name = "Utility deposit", Type = "Asset" };
+    accounting.SaveAccount(income); accounting.SaveAccount(equipment); accounting.SaveAccount(deposit);
+    var date = new DateTime(2023, 2, 1);
+    CashTransaction Money(string direction, int account, decimal amount, string reference = "") => new() { Direction = direction, Date = date, CashAccountId = bank.Id, Counterparty = "Test party", Description = "General transaction", Reference = reference, Allocations = [new() { AccountId = account, Amount = amount }] };
+    Reject(() => service.Record(Money("Money in", income.Id, 20m)));
+    accounting.Start(accounts.Where(a => a.IsCashBank && a.IsActive).ToDictionary(a => a.Id, a => a.Id == bank.Id ? 1000m : 0m), new DateTime(2023, 1, 1));
+    var split = Money("Money out", expense.Id, 10m, "PV-1");
+    split.Allocations.Add(new() { AccountId = equipment.Id, Amount = 200m }); split.Allocations.Add(new() { AccountId = deposit.Id, Amount = 100m });
+    split.Attachments.Add(new() { FileName = "receipt.txt", Content = [65, 66] });
+    var splitId = service.Record(split);
+    Require(split.Id == 0, "Posting snapshots caller state");
+    var receiptId = service.Record(Money("Money in", income.Id, 20m, "RC-1"));
+    var refund = Money("Money in", deposit.Id, 40m, "REF-1"); refund.RelatedTransactionId = splitId; var refundId = service.Record(refund);
+    service.Record(Money("Money out", cash.Id, 50m, "TRANSFER-1"));
+    var reopened = new CashTransactionService(new HouseholdRepository(path));
+    Require(reopened.GetAll().Count == 4 && reopened.GetAll().Single(t => t.Id == splitId).Attachments.Single().Content.SequenceEqual(new byte[] { 65, 66 }), "General transactions, splits and attachments persist");
+    Require(reopened.GetAll().Single(t => t.Id == refundId).RelatedTransactionId == splitId, "Refund keeps original transaction link");
+    var journal = accounting.GetJournal();
+    Require(journal.All(e => e.Lines.Sum(l => l.Debit) == e.Lines.Sum(l => l.Credit)), "Every money transaction posts balanced lines");
+    decimal Balance(int id) => accounting.GetJournal().SelectMany(e => e.Lines).Where(l => l.AccountId == id).Sum(l => l.Debit - l.Credit);
+    Require(Balance(bank.Id) == 700m && Balance(cash.Id) == 50m && Balance(equipment.Id) == 200m && Balance(deposit.Id) == 60m && Balance(income.Id) == -20m, "Money in/out, asset purchase, deposit refund and bank transfer post to correct sides");
+    var oldControl = new Account { Code = "1190", Name = "Previous maintenance control", Type = "Asset" }; accounting.SaveAccount(oldControl);
+    var controlIds = CashTransactionService.LinkedControlAccounts(accounting.GetSettings(), [new JournalEntry { Source = "OpeningCharge", Lines = [new() { AccountId = oldControl.Id, Debit = 10m }] }]);
+    Require(controlIds.Contains(oldControl.Id), "Prior linked control accounts remain protected when defaults change");
+    var count = service.GetAll().Count; var journalCount = accounting.GetJournal().Count;
+    Reject(() => service.Record(Money("Money out", expense.Id, 10m, "pv-1")));
+    Reject(() => service.Record(Money("Money out", bank.Id, 10m)));
+    Reject(() => service.Record(Money("Money out", accounting.GetSettings().ReceivableAccountId, 10m)));
+    Reject(() => service.Record(Money("Money in", accounting.GetSettings().DepositAccountId, 10m)));
+    Reject(() => service.Record(Money("Money out", accounting.GetSettings().PayableAccountId, 10m)));
+    Reject(() => service.Record(Money("Money out", expense.Id, 0.001m)));
+    var invalid = Money("Money in", income.Id, 10m); invalid.Date = DateTime.Today.AddDays(1); Reject(() => service.Record(invalid));
+    invalid = Money("Money in", income.Id, 10m); invalid.Date = new DateTime(2022, 12, 31); Reject(() => service.Record(invalid));
+    invalid = Money("Money in", income.Id, 10m); invalid.RelatedTransactionId = splitId; invalid.Date = date.AddDays(-1); Reject(() => service.Record(invalid));
+    invalid = Money("Money in", income.Id, 10m); invalid.RelatedTransactionId = int.MaxValue; Reject(() => service.Record(invalid));
+    invalid = Money("Money out", expense.Id, 10m); invalid.CashAccountId = income.Id; Reject(() => service.Record(invalid));
+    var inactive = new Account { Code = "5999", Name = "Inactive allocation", Type = "Expense", IsActive = false }; accounting.SaveAccount(inactive);
+    Reject(() => service.Record(Money("Money out", inactive.Id, 10m)));
+    Require(service.GetAll().Count == count && accounting.GetJournal().Count == journalCount, "Invalid money transactions leave source and journal unchanged");
+    Reject(() => service.Reverse(receiptId, date.AddDays(-1), "Early")); Reject(() => service.Reverse(receiptId, date, ""));
+    service.Reverse(receiptId, date.AddDays(1), "Receipt entered incorrectly");
+    Reject(() => service.Reverse(receiptId, date.AddDays(2), "Duplicate"));
+    Require(Balance(income.Id) == 0m && Balance(bank.Id) == 680m && service.GetAll().Single(t => t.Id == receiptId).ReversedDate == date.AddDays(1), "Dated reversal preserves original and reverses cash and income once");
+    using (var connection = new SqliteConnection($"Data Source={path}"))
+    {
+        connection.Open(); using var command = connection.CreateCommand();
+        command.CommandText = "CREATE TRIGGER FailCashJournal BEFORE INSERT ON JournalEntries WHEN NEW.Source='CashTransaction' BEGIN SELECT RAISE(ABORT, 'forced failure'); END"; command.ExecuteNonQuery();
+        var before = service.GetAll().Count; var beforeJournal = accounting.GetJournal().Count; var failed = false;
+        try { service.Record(Money("Money out", expense.Id, 5m, "ROLLBACK")); } catch { failed = true; }
+        Require(failed && service.GetAll().Count == before && accounting.GetJournal().Count == beforeJournal, "Failed journal atomically rolls back cash record");
+        command.CommandText = "DROP TRIGGER FailCashJournal"; command.ExecuteNonQuery();
+    }
+    var reset = new DataResetService(repo); var confirmation = reset.Prepare(DataResetCategory.Expenses); reset.Delete(confirmation, confirmation.Code);
+    Require(service.GetAll().Count == 0 && accounting.GetJournal().All(e => e.Source != "CashTransaction" && e.Source != "CashTransactionReversal"), "Income/expenditure reset removes money transactions and associated journals");
+    Require(new CashTransactionService(new HouseholdRepository(path)).GetAll().Count == 0, "Reset remains empty after reopen");
+    Console.WriteLine("PASS: general money in/out, splits, income, assets, supplier deposits/refunds, transfers, attachments, historical dates, linked entries, reversals, validation and atomic rollback/reset.");
+}
+
+static void CheckAccountingOperations(string folder)
+{
+    var path = Path.Combine(folder, "accounting-operations.db"); var repo = new HouseholdRepository(path); var accounting = new AccountingService(repo); var operations = accounting.Operations!; var expenses = accounting.Expenses!; var cash = expenses.Transactions!;
+    Account Add(string code, string name, string type) { var a = new Account { Code = code, Name = name, Type = type }; accounting.SaveAccount(a); return a; }
+    var equipment = Add("1220", "Equipment", "Asset"); var depreciation = Add("1290", "Accumulated depreciation", "Asset"); var deposits = Add("1310", "Supplier deposits", "Asset"); var prepayments = Add("1400", "Prepayments", "Asset"); var loan = Add("2300", "Other liability", "Liability");
+    var expense = accounting.GetAccounts().First(a => a.Type == "Expense"); var bank = accounting.GetAccounts().Single(a => a.Code == "1000"); var funds = accounting.GetSettings().OpeningEquityAccountId;
+    var supplier = new Payee { Name = "Historical supplier" }; expenses.SavePayee(supplier); var opening = new DateTime(2023, 1, 1);
+    var balances = accounting.GetAccounts().Where(a => a.IsCashBank && a.IsActive).ToDictionary(a => a.Id, a => a.Id == bank.Id ? 1000m : 0m);
+    var details = new OpeningDetails { Accounts = [new() { AccountId = loan.Id, Credit = 75m }], Registers = [new() { Kind = "Asset", Name = "Opening laptop", AccountId = equipment.Id, DepreciationAccountId = depreciation.Id, Cost = 500m, AccumulatedDepreciation = 100m, AcquisitionDate = opening.AddDays(-10) }, new() { Kind = "Supplier deposit", Name = "Water deposit", Party = supplier.Name, AccountId = deposits.Id, Cost = 200m, AcquisitionDate = opening.AddDays(-10) }, new() { Kind = "Prepayment", Name = "Advance", Party = supplier.Name, AccountId = prepayments.Id, Cost = 150m, AcquisitionDate = opening.AddDays(-10) }], SupplierBills = [new() { PayeeId = supplier.Id, Reference = "OLD-1", Description = "Opening invoice", DocumentDate = opening.AddDays(-5), Amount = 120m }] };
+    var preview = operations.PreviewOpening(balances, opening, details);
+    Require(preview.Sum(l => l.Debit) == preview.Sum(l => l.Credit) && accounting.GetSettings().StartedOn is null && operations.Registers().Count == 0 && expenses.GetAll().Count == 0 && accounting.GetJournal().Count == 0, "Opening review is balanced and rolls back every source record and journal");
+    var invalid = new OpeningDetails { Accounts = [new() { AccountId = equipment.Id, Debit = 500m }], Registers = details.Registers };
+    Reject(() => accounting.Start(balances, opening, invalid));
+    Require(accounting.GetSettings().StartedOn is null && operations.Registers().Count == 0, "Duplicate register/account opening rolls back whole setup");
+    accounting.Start(balances, opening, details);
+    var registers = operations.Registers(); var asset = registers.Single(r => r.Kind == "Asset"); var deposit = registers.Single(r => r.Kind == "Supplier deposit"); var prepay = registers.Single(r => r.Kind == "Prepayment"); var bill = expenses.GetAll().Single();
+    decimal AccountBalance(int id) => accounting.GetJournal().SelectMany(e => e.Lines).Where(l => l.AccountId == id).Sum(l => l.Debit - l.Credit);
+    Require(asset.Cost == 500m && asset.AccumulatedDepreciation == 100m && asset.Balance == 400m && deposit.Balance == 200m && prepay.Balance == 150m, "Opening schedules populate register gross and net balances");
+    Require(bill.IsOpeningBalance && bill.Balance == 120m && AccountBalance(expense.Id) == 0m && AccountBalance(accounting.GetSettings().PayableAccountId) == -120m, "Opening supplier bill creates payable without current-year expense");
+    operations.UpdateRegister(asset.Id, asset.Name, asset.Party, "Guardhouse", "Updated location", depreciation.Id);
+    Require(operations.Registers().Single(r => r.Id == asset.Id).Location == "Guardhouse", "Register metadata edits are saved without changing balances");
+    Reject(() => operations.UpdateRegister(asset.Id, asset.Name, asset.Party, "Guardhouse", "", null));
+    var applied = operations.RegisterAction(new() { RegisterItemId = prepay.Id, Action = "Apply to bill", Date = opening.AddDays(2), Amount = 70m, BillId = bill.Id, Reason = "Use existing advance" });
+    Require(expenses.Get(bill.Id).Balance == 50m && operations.Registers().Single(r => r.Id == prepay.Id).Balance == 80m && AccountBalance(bank.Id) == 1000m, "Prepayment application settles bill without moving bank");
+    Reject(() => operations.RegisterAction(new() { RegisterItemId = prepay.Id, Action = "Apply to bill", Date = opening.AddDays(2), Amount = 100m, BillId = bill.Id, Reason = "Overapply" }));
+    expenses.Pay(bill.Id, 50m, opening.AddDays(3), bank.Id, "Remainder");
+    Require(expenses.Get(bill.Id).Balance == 0m && AccountBalance(accounting.GetSettings().PayableAccountId) == 0m, "Cash plus noncash settlement reconciles supplier payable");
+    operations.ReverseAdjustment(applied, opening.AddDays(4), "Wrong advance");
+    Require(expenses.Get(bill.Id).Balance == 70m && operations.Registers().Single(r => r.Id == prepay.Id).Balance == 150m, "Reversing application restores both bill and prepayment");
+    var depAdjustment = operations.RegisterAction(new() { RegisterItemId = asset.Id, Action = "Depreciate", Date = opening.AddDays(2), Amount = 50m, CounterAccountId = expense.Id, Reason = "Period depreciation" });
+    Require(operations.Registers().Single(r => r.Id == asset.Id).Balance == 350m && AccountBalance(depreciation.Id) == -150m, "Depreciation updates register and ledger");
+    Reject(() => operations.RegisterAction(new() { RegisterItemId = asset.Id, Action = "Depreciate", Date = opening.AddDays(1), Amount = 10m, CounterAccountId = expense.Id, Reason = "Out of order" }));
+    Reject(() => operations.RegisterAction(new() { RegisterItemId = asset.Id, Action = "Depreciate", Date = opening.AddDays(3), Amount = 400m, CounterAccountId = expense.Id, Reason = "Too much" }));
+    var disposal = operations.RegisterAction(new() { RegisterItemId = asset.Id, Action = "Dispose / write off asset", Date = opening.AddDays(5), Amount = 350m, CounterAccountId = expense.Id, Reason = "Broken equipment" });
+    Require(operations.Registers().Single(r => r.Id == asset.Id).Cost == 0 && AccountBalance(equipment.Id) == 0 && AccountBalance(depreciation.Id) == 0, "Disposal clears asset cost and accumulated depreciation together");
+    operations.ReverseAdjustment(disposal, opening.AddDays(6), "Still in use");
+    Require(operations.Registers().Single(r => r.Id == asset.Id).Balance == 350m, "Disposal reversal restores asset register");
+    var purchase = cash.Record(new() { Date = opening.AddDays(7), CashAccountId = bank.Id, Direction = "Money out", Counterparty = supplier.Name, Description = "New deposit", Allocations = [new() { AccountId = deposits.Id, Amount = 100m }] });
+    var linkedId = operations.AddRegister(new() { Kind = "Supplier deposit", Name = "New deposit", Party = supplier.Name, AcquisitionDate = opening.AddDays(7), AccountId = deposits.Id }, purchase, 100m);
+    var linkedItem = operations.Registers().Single(r => r.Id == linkedId);
+    Require(!RegisterCashLinks.Available(linkedItem, operations.Registers(), cash.GetAll()).Any(t => t.Id == purchase), "Fully linked purchases are excluded from the cash-link picker");
+    Reject(() => operations.LinkCash(deposit.Id, purchase, 1m));
+    var refund = cash.Record(new() { Date = opening.AddDays(8), CashAccountId = bank.Id, Direction = "Money in", Counterparty = supplier.Name, Description = "Partial refund", RelatedTransactionId = purchase, Allocations = [new() { AccountId = deposits.Id, Amount = 40m }] });
+    Require(RegisterCashLinks.Available(linkedItem, operations.Registers(), cash.GetAll()).Single(t => t.Id == refund).Available == 40m, "Unlinked deposit refunds remain available");
+    operations.LinkCash(linkedId, refund, 40m);
+    Require(!RegisterCashLinks.Available(operations.Registers().Single(r => r.Id == linkedId), operations.Registers(), cash.GetAll()).Any(t => t.Id == refund), "Fully linked refunds are excluded too");
+    Require(operations.Registers().Single(r => r.Id == linkedId).Balance == 60m, "Linked deposit refund reduces only its individual deposit");
+    cash.Reverse(refund, opening.AddDays(9), "Refund entered in error");
+    Require(operations.Registers().Single(r => r.Id == linkedId).Balance == 100m, "Cash reversal updates linked deposit register atomically");
+    var other = Add("1450", "Opening other asset", "Asset"); operations.AddOpeningSchedules(new() { Accounts = [new() { AccountId = other.Id, Debit = 80m }] }, "Missing asset in handover");
+    var beforeAdopt = accounting.GetJournal().Count; var adopted = operations.AddRegister(new() { Kind = "Asset", Name = "Existing item", AccountId = other.Id, AcquisitionDate = opening.AddDays(-1) }, 0, 80m);
+    Require(accounting.GetJournal().Count == beforeAdopt && operations.Registers().Single(r => r.Id == adopted).Balance == 80m, "Adopting existing opening balance does not post it twice");
+    Reject(() => operations.AddRegister(new() { Kind = "Asset", Name = "Duplicate item", AccountId = other.Id, AcquisitionDate = opening.AddDays(-1) }, 0, 1m));
+    var otherAsset = Add("1460", "Other unregistered asset", "Asset");
+    var manual = new AccountingAdjustment { Date = opening.AddDays(10), Description = "Noncash allocation", Lines = [new() { AccountId = otherAsset.Id, Debit = 25m }, new() { AccountId = funds, Credit = 24m }], Attachments = [new() { FileName = "note.txt", Content = [65] }] };
+    var draft = operations.SaveAdjustment(manual); Reject(() => operations.PostAdjustment(draft));
+    var revised = operations.Adjustments().Single(a => a.Id == draft); revised.Lines[1].Credit = 25m; operations.SaveAdjustment(revised); Reject(() => operations.SaveAdjustment(revised)); operations.PostAdjustment(draft);
+    Require(AccountBalance(otherAsset.Id) == 25m && operations.Adjustments().Single(a => a.Id == draft).Attachments.Single().Content[0] == 65, "Manual draft balancing, stale-version protection and attachments work");
+    var guarded = new AccountingAdjustment { Date = opening.AddDays(10), Description = "Invalid bank journal", Lines = [new() { AccountId = bank.Id, Debit = 1m }, new() { AccountId = funds, Credit = 1m }] }; Reject(() => operations.SaveAdjustment(guarded));
+    guarded.Lines[0].AccountId = equipment.Id; Reject(() => operations.SaveAdjustment(guarded));
+    operations.SetLock(opening.AddDays(10), "Accounts reviewed");
+    Reject(() => cash.Record(new() { Date = opening.AddDays(10), CashAccountId = bank.Id, Direction = "Money out", Description = "Locked", Allocations = [new() { AccountId = expense.Id, Amount = 1m }] }));
+    Reject(() => operations.ReverseAdjustment(draft, opening.AddDays(10), "Locked reversal"));
+    operations.SetLock(null, "Review correction"); operations.ReverseAdjustment(draft, opening.AddDays(11), "Correction");
+    Require(AccountBalance(otherAsset.Id) == 0 && operations.Audit().Any(a => a.Description.Contains("unlocked")), "Unlock is audited and dated reversal restores ledger");
+    var beforeCorrection = operations.Registers().Single(r => r.Id == deposit.Id).Balance;
+    operations.RegisterAction(new() { RegisterItemId = deposit.Id, Action = "Opening cost correction", Date = opening, Amount = 5m, Reason = "Opening handover correction" });
+    Require(operations.Registers().Single(r => r.Id == deposit.Id).Balance == beforeCorrection + 5m, "Audited opening register correction updates supporting record and ledger without rewriting history");
+    var bankBeforeCorrection = AccountBalance(bank.Id); operations.CorrectOpeningBank(bank.Id, -5m, "Opening bank difference");
+    Require(AccountBalance(bank.Id) == bankBeforeCorrection - 5m && operations.Adjustments().Any(a => a.Action == "Opening bank correction"), "Opening bank corrections are separate audited entries");
+    using (var connection = new SqliteConnection($"Data Source={path}"))
+    {
+        connection.Open(); using var command = connection.CreateCommand();
+        command.CommandText = "CREATE TRIGGER FailAdvancedJournal BEFORE INSERT ON JournalEntries WHEN NEW.Source='Adjustment' BEGIN SELECT RAISE(ABORT, 'forced failure'); END"; command.ExecuteNonQuery();
+        var beforeRegister = operations.Registers().Single(r => r.Id == prepay.Id).Balance; var beforeBill = expenses.Get(bill.Id).Balance; var beforeAdjustments = operations.Adjustments().Count; var failed = false;
+        try { operations.RegisterAction(new() { RegisterItemId = prepay.Id, Action = "Apply to bill", Date = opening.AddDays(12), Amount = 10m, BillId = bill.Id, Reason = "Forced rollback" }); } catch { failed = true; }
+        Require(failed && operations.Registers().Single(r => r.Id == prepay.Id).Balance == beforeRegister && expenses.Get(bill.Id).Balance == beforeBill && operations.Adjustments().Count == beforeAdjustments, "Failed adjustment journal rolls back register, supplier settlement and adjustment together");
+        command.CommandText = "DROP TRIGGER FailAdvancedJournal"; command.ExecuteNonQuery();
+    }
+    var reloaded = new AccountingService(new HouseholdRepository(path));
+    Require(reloaded.Operations!.Registers().Count == operations.Registers().Count && reloaded.Expenses!.Get(bill.Id).Settlements.Single().ReversedDate.HasValue, "Registers, adjustments and bill settlements survive reopen");
+    CheckReconciliation(folder);
+    var reset = new DataResetService(repo); var partial = reset.Prepare(DataResetCategory.Expenses); Reject(() => reset.Delete(partial, partial.Code));
+    var full = reset.Prepare(DataResetCategory.Accounting); reset.Delete(full, full.Code);
+    Require(operations.Registers().Count == 0 && operations.Adjustments().Count == 0 && operations.Reconciliations().Count == 0 && accounting.GetSettings().StartedOn is null, "Complete accounting reset clears dependent registers, adjustments and reconciliations");
+    Console.WriteLine("PASS: full opening previews/schedules, supplier opening payables, asset/deposit/prepayment registers, linked refunds, noncash bill settlement, depreciation/disposal, journal drafts/reversals, locks and dependent reset.");
+}
+static void CheckReconciliation(string folder)
+{
+    var repo = new HouseholdRepository(Path.Combine(folder, "reconciliation.db")); var accounting = new AccountingService(repo); var operations = accounting.Operations!; var cash = accounting.Expenses!.Transactions!;
+    var bank = accounting.GetAccounts().Single(a => a.Code == "1000"); var expense = accounting.GetAccounts().First(a => a.Type == "Expense"); var date = new DateTime(2023, 1, 1);
+    accounting.Start(accounting.GetAccounts().Where(a => a.IsCashBank).ToDictionary(a => a.Id, a => a.Id == bank.Id ? 1000m : 0m), date);
+    int Pay(decimal amount, int days) => cash.Record(new() { Date = date.AddDays(days), Direction = "Money out", CashAccountId = bank.Id, Description = "Bank payment", Allocations = [new() { AccountId = expense.Id, Amount = amount }] });
+    var one = Pay(30, 1); var two = Pay(20, 2); Pay(10, 3);
+    var id = operations.SaveReconciliation(new() { AccountId = bank.Id, From = date, To = new DateTime(2023, 1, 31), OpeningBalance = 1000m, ClosingBalance = 950m });
+    var rows = BankCsvImport.Parse("Date,Description,Amount\r\n02/01/2023,\"Combined, payment\",-50\r\n");
+    var imported = BankCsvImport.Map(rows, 0, 1, -1, 2, -1, -1, "dd/MM/yyyy");
+    Require(imported.Single().Description == "Combined, payment" && imported.Single().Amount == -50m, "Bank CSV preserves quoted commas and signed money");
+    Require(operations.Import(id, imported) == 1 && operations.Import(id, imported) == 0, "Repeated statement imports skip duplicates without journal entries");
+    Reject(() => operations.Finalize(id));
+    var review = operations.Review(id); var bankId = review.Statement.StatementLines.Single().Id;
+    var bookIds = review.BookLines.Where(l => l.Amount == -30m || l.Amount == -20m).Select(l => l.Id).ToArray();
+    Reject(() => operations.Match(id, [bankId], [bookIds[0]])); operations.Match(id, [bankId], bookIds);
+    Require(operations.Review(id).Difference == 0m && operations.Review(id).Outstanding == -10m, "Grouped bank match reconciles with an uncleared payment");
+    operations.Finalize(id); Reject(() => operations.Match(id, [bankId], bookIds));
+    Reject(() => cash.Reverse(one, date.AddDays(4), "Matched item"));
+    Reject(() => Pay(1m, 5));
+    operations.Reopen(id, "Correct match"); var group = operations.Review(id).Statement.Matches.Single().Id; operations.Unmatch(id, group); operations.Match(id, [bankId], bookIds); operations.Finalize(id);
+    var second = operations.SaveReconciliation(new() { AccountId = bank.Id, From = new DateTime(2023, 2, 1), To = new DateTime(2023, 2, 28), OpeningBalance = 950m, ClosingBalance = 940m });
+    operations.Import(second, [new() { Date = new DateTime(2023, 2, 2), Description = "Cleared previous payment", Amount = -10m }]);
+    var carried = operations.Review(second); Require(carried.BookLines.Count == 1 && carried.BookLines.Single().Amount == -10m, "Uncleared ledger entries carry forward and cleared entries cannot match twice");
+    operations.Match(second, [carried.Statement.StatementLines.Single().Id], [carried.BookLines.Single().Id]); operations.Finalize(second); Reject(() => operations.Reopen(id, "Earlier statement"));
+    Require(operations.Review(second).Difference == 0 && operations.Reconciliations().All(r => r.IsFinalized), "Consecutive statements finalize with reconciled opening/closing balances");
+    var cashCount = accounting.Expenses!.Transactions!.GetAll().Count;
+    Require(cashCount == 3, "Importing/matching/reopening statements never creates money transactions");
+    var third = operations.SaveReconciliation(new() { AccountId = bank.Id, From = new DateTime(2023, 3, 1), To = new DateTime(2023, 3, 31), OpeningBalance = 940m, ClosingBalance = 940m });
+    var extra = new BankStatementLine { Date = new DateTime(2023, 3, 2), Description = "Mistaken import", Amount = -1m };
+    operations.Import(third, [extra]); operations.RemoveStatementLines(third, [operations.Review(third).Statement.StatementLines.Single().Id]);
+    Require(operations.Review(third).Statement.StatementLines.Count == 0 && operations.Review(third).Statement.History.Any(h => h.Contains("Removed statement line")), "Removing a mistaken unmatched import preserves an audit history");
+    operations.DeleteReconciliationDraft(third, "Wrong draft statement");
+    Require(operations.Reconciliations().Count == 2, "Unfinished latest statement can be deleted without deleting reviewed history");
+    var negativeRepo = new HouseholdRepository(Path.Combine(folder, "overdraft.db")); var negativeAccounting = new AccountingService(negativeRepo); var negativeBank = negativeAccounting.GetAccounts().Single(a => a.Code == "1000");
+    negativeAccounting.Start(negativeAccounting.GetAccounts().Where(a => a.IsCashBank).ToDictionary(a => a.Id, a => a.Id == negativeBank.Id ? -50m : 0m), date);
+    negativeAccounting.Operations!.CorrectOpeningBank(negativeBank.Id, 10m, "Correct overdraft");
+    var negativeStatement = negativeAccounting.Operations.SaveReconciliation(new() { AccountId = negativeBank.Id, From = date, To = new DateTime(2023, 1, 31), OpeningBalance = -40m, ClosingBalance = -40m });
+    Require(negativeAccounting.Operations.Review(negativeStatement).BookOpening == -40m && negativeAccounting.Operations.Review(negativeStatement).BookLines.Count == 0, "Overdrafts and audited bank opening corrections form the reconciliation baseline");
+    negativeAccounting.Operations.Finalize(negativeStatement);
+    var multiRows = BankCsvImport.Parse("Date;Description;Credit;Debit\n2023-01-02;Credit;5;\n2023-01-03;Debit;;2", ';');
+    var mapped = BankCsvImport.Map(multiRows, 0, 1, -1, -1, 2, 3, "yyyy-MM-dd"); Require(mapped.Sum(l => l.Amount) == 3m, "CSV supports separate credit/debit columns and explicit ISO dates");
+    Reject(() => BankCsvImport.Map(multiRows, 0, 1, -1, -1, 2, 3, "dd/MM/yyyy"));
+    Reject(() => BankCsvImport.Map(multiRows, 0, 1, -1, 2, 2, 3, "yyyy-MM-dd"));
+    Console.WriteLine("PASS: CSV mapping, duplicate imports, grouped matches, statement arithmetic, finalized protection, reopen history and uncleared carry-forward.");
+}
+
+static void CheckFinancialReports()
+{
+    var chart = new List<Account>
+    {
+        new() {Id=1,Code="1000",Name="Bank",Type="Asset"},
+        new() {Id=2,Code="1100",Name="Receivable",Type="Asset"},
+        new() {Id=3,Code="1200",Name="Supplier deposits",Type="Asset"},
+        new() {Id=4,Code="1500",Name="Equipment",Type="Asset"},
+        new() {Id=5,Code="1590",Name="Accumulated depreciation",Type="Asset"},
+        new() {Id=6,Code="2100",Name="Payable",Type="Liability"},
+        new() {Id=7,Code="3000",Name="Opening funds",Type="Equity"},
+        new() {Id=8,Code="4000",Name="Income",Type="Income"},
+        new() {Id=9,Code="5000",Name="Expenses",Type="Expense",IsActive=false},
+        new() {Id=10,Code="5600",Name="Depreciation",Type="Expense"},
+        new() {Id=11,Code="6000",Name="Unused",Type="Expense"}
+    };
+    var journal = new List<JournalEntry>();
+    void Entry(int year, int month, int debit, int credit, decimal amount) => journal.Add(new() {Date=new DateTime(year,month,1),Lines=[new(){AccountId=debit,Debit=amount},new(){AccountId=credit,Credit=amount}]});
+    Entry(2024,1,1,7,1000m); Entry(2024,2,1,8,200m); Entry(2024,3,9,1,50m);
+    Entry(2025,1,2,8,400m); Entry(2025,2,9,6,100m); Entry(2025,3,4,1,300m);
+    Entry(2025,4,10,5,20m); Entry(2025,5,3,1,100m); Entry(2025,6,1,3,40m);
+    Entry(2026,1,8,1,20m);
+    var end = new DateTime(2025,12,31);
+    var balance = FinancialReports.Generate("Balance Sheet",new DateTime(2025,1,1),end,chart,journal);
+    decimal Amount(FinancialReport report,string name)=>report.Rows.Single(r=>r.Account==name).Amount!.Value;
+    Require(Amount(balance,"Total assets")==1530m && Amount(balance,"Total liabilities and equity")==1530m && Amount(balance,"Balance difference")==0m,"Balance sheet reconciles assets, liabilities and unclosed earnings");
+    Require(Amount(balance,"Accumulated surplus / (deficit) before 2025")==150m && Amount(balance,"Current year surplus / (deficit)")==280m,"Prior and current year surplus carry forward without closing journals");
+    Require(Amount(balance,"Accumulated depreciation")==-20m && Amount(balance,"Supplier deposits")==60m,"Contra-assets and partial refunds affect balances correctly");
+    var income=FinancialReports.Generate("Income Statement",new DateTime(2025,1,1),end,chart,journal);
+    Require(Amount(income,"Total income")==400m && Amount(income,"Total expenses")==120m && Amount(income,"Surplus / (deficit)")==280m,"Income statement includes unpaid income, bills and depreciation within the requested period");
+    Require(income.Rows.Any(r=>r.Account=="Expenses") && !income.Rows.Any(r=>r.Account=="Unused"),"Inactive accounts with balances remain visible; zero accounts are hidden");
+    var trial=FinancialReports.Generate("Trial Balance",end,end,chart,journal);
+    Require(trial.Rows.Last().Debit==1720m && trial.Rows.Last().Credit==1720m,"Trial balance uses cumulative net debit and credit balances");
+    var before=FinancialReports.Generate("Balance Sheet",end,new DateTime(2024,12,31),chart,journal);
+    Require(Amount(before,"Total assets")==1150m,"As-of reports exclude later entries");
+    Require(FinancialReports.Generate("Income Statement",new DateTime(2025,7,1),end,chart,journal,true).Rows.Any(r=>r.Account=="Unused"),"Zero-balance option works for empty periods");
+    var reversed=FinancialReports.Generate("Income Statement",new DateTime(2026,1,1),new DateTime(2026,12,31),chart,journal);
+    Require(Amount(reversed,"Surplus / (deficit)")==-20m,"Later reversals report in their posting period");
+    Reject(()=>FinancialReports.Generate("Income Statement",end,end.AddDays(-1),chart,journal));
+    Require(journal.Count==10,"Generating reports never creates closing or other journals");
+    Console.WriteLine("PASS: financial reports, historical cutoffs, multi-year surplus, inactive accounts, depreciation, refunds and reversals.");
 }

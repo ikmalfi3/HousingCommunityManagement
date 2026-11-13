@@ -28,16 +28,25 @@ public sealed class ExpenseBill
     public DateTime AccountingDate { get; set; } = DateTime.Today;
     public DateTime? DueDate { get; set; }
     public bool IsPosted { get; set; }
+    public bool IsOpeningBalance { get; set; }
+    public List<ExpenseSettlement> Settlements { get; set; } = [];
     public DateTime? CancelledDate { get; set; }
     public string CancellationReason { get; set; } = "";
     public List<ExpenseLine> Lines { get; set; } = [];
     public List<ExpensePayment> Payments { get; set; } = [];
     public List<ExpenseAttachment> Attachments { get; set; } = [];
     public decimal Total => Lines.Sum(l => l.Amount);
-    public decimal Paid => Payments.Where(p => !p.ReversedDate.HasValue).Sum(p => p.Amount);
+    public decimal Paid => Payments.Where(p => !p.ReversedDate.HasValue).Sum(p => p.Amount) + Settlements.Where(p => !p.ReversedDate.HasValue).Sum(p => p.Amount);
     public decimal Balance => IsPosted && !CancelledDate.HasValue ? Total - Paid : 0;
     public string Status => CancelledDate.HasValue ? "Cancelled" : !IsPosted ? "Draft" : Paid == 0 ? "Unpaid" : Balance == 0 ? "Paid" : "Partially paid";
     public bool IsOverdueOn(DateTime today) => Balance > 0 && DueDate.HasValue && DueDate.Value.Date < today.Date;
+}
+public sealed class ExpenseSettlement
+{
+    public int AdjustmentId { get; set; }
+    public DateTime Date { get; set; }
+    public decimal Amount { get; set; }
+    public DateTime? ReversedDate { get; set; }
 }
 public sealed class ExpenseLine
 {
@@ -83,6 +92,7 @@ public interface IExpenseRepository
 }
 public sealed class ExpenseService(IExpenseRepository repository)
 {
+    public CashTransactionService? Transactions => repository is ICashTransactionRepository cash ? new(cash) : null;
     public AccountingService? Accounting => repository is IAccountingRepository accounting ? new(accounting) : null;
     public List<Payee> GetPayees() => repository.GetPayees();
     public List<ExpenseCategory> GetCategories() => repository.GetExpenseCategories();

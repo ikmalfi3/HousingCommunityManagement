@@ -223,7 +223,11 @@ partial class HouseRangeForm
         save.Name = "save";
         save.Size = new Size(75, 25);
         save.TabIndex = 1;
-        save.Text = "Save";
+        save.Text = "Create houses";
+        prefix.TextChanged += PreviewChanged;
+        start.ValueChanged += PreviewChanged;
+        end.ValueChanged += PreviewChanged;
+        digits.ValueChanged += PreviewChanged;
         save.Click += SaveClicked;
         // 
         // HouseRangeForm

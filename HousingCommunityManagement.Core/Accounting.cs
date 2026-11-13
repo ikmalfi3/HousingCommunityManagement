@@ -20,7 +20,22 @@ public sealed class AccountingSettings
     public int PaymentAccountId { get; set; }
     public int PayableAccountId { get; set; }
     public int OpeningEquityAccountId { get; set; }
+    public int AssetPurchaseAccountId { get; set; }
+    public int SupplierDepositAccountId { get; set; }
+    public int PrepaymentAccountId { get; set; }
+    public int AccumulatedDepreciationAccountId { get; set; }
+    public int DepreciationExpenseAccountId { get; set; }
+    public int WriteOffExpenseAccountId { get; set; }
+    public int RegisterAccount(string kind) => kind switch
+    {
+        "Asset" => AssetPurchaseAccountId,
+        "Supplier deposit" => SupplierDepositAccountId,
+        "Prepayment" => PrepaymentAccountId,
+        _ => 0
+    };
+    public int RegisterExpenseAccount(string action) => action == "Depreciate" ? DepreciationExpenseAccountId : WriteOffExpenseAccountId;
     public DateTime? StartedOn { get; set; }
+    public DateTime? LockedThrough { get; set; }
 }
 public sealed class JournalEntry
 {
@@ -46,10 +61,11 @@ public interface IAccountingRepository
     void SaveAccount(Account account);
     void SaveAccountingSettings(AccountingSettings settings);
     List<JournalEntry> GetJournal();
-    void StartAccounting(Dictionary<int, decimal> openingCashBalances, DateTime openingDate);
+    void StartAccounting(Dictionary<int, decimal> openingCashBalances, DateTime openingDate, OpeningDetails? details = null);
 }
 public sealed class AccountingService(IAccountingRepository repository)
 {
+    public AccountingOperationsService? Operations => repository is IAccountingOperationsRepository operations ? new(operations) : null;
     public ExpenseService? Expenses => repository is IExpenseRepository expenses ? new(expenses) : null;
     public List<Account> GetAccounts() => repository.GetAccounts();
     public AccountingSettings GetSettings() => repository.GetAccountingSettings();
@@ -63,12 +79,12 @@ public sealed class AccountingService(IAccountingRepository repository)
         repository.SaveAccount(account);
     }
     public void SaveSettings(AccountingSettings settings) => repository.SaveAccountingSettings(settings);
-    public void Start(Dictionary<int, decimal> openingCashBalances, DateTime? openingDate = null)
+    public void Start(Dictionary<int, decimal> openingCashBalances, DateTime? openingDate = null, OpeningDetails? details = null)
     {
-        if (openingCashBalances.Values.Any(v => v < 0 || v > 1000000000 || decimal.Round(v, 2) != v)) throw new ArgumentException("Opening cash/bank balances must be from RM 0 to RM 1 billion with at most two decimals.");
+        if (openingCashBalances.Values.Any(v => Math.Abs(v) > 1000000000 || decimal.Round(v, 2) != v)) throw new ArgumentException("Opening cash/bank balances must be between minus and plus RM 1 billion with at most two decimals.");
         var date = (openingDate ?? DateTime.Today).Date;
         if (date.Year < 1900 || date > DateTime.Today) throw new ArgumentException("Choose an opening date from 1900 through today.");
-        repository.StartAccounting(openingCashBalances, date);
+        repository.StartAccounting(openingCashBalances, date, details);
     }
 }
 

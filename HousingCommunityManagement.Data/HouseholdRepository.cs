@@ -16,6 +16,8 @@ public sealed partial class HouseholdDbContext(string databasePath) : DbContext
         ConfigureRenovations(modelBuilder);
         ConfigureAccounting(modelBuilder);
         ConfigureExpenses(modelBuilder);
+        ConfigureCashTransactions(modelBuilder);
+        ConfigureAccountingOperations(modelBuilder);
         var h = modelBuilder.Entity<Household>();
         h.Property(x => x.HouseNumber).UseCollation("NOCASE"); h.HasIndex(x => x.HouseNumber).IsUnique();
         h.Ignore(x => x.OwnerSummary); h.Ignore(x => x.ContactSummary); h.Ignore(x => x.FlagSummary);
@@ -51,6 +53,8 @@ public sealed partial class HouseholdRepository : IHouseholdRepository, IMonthly
         EnsureBillingSchema(db);
         EnsureRenovationSchema(db);
         EnsureExpenseSchema(db);
+        EnsureCashTransactionSchema(db);
+        EnsureAccountingOperationsSchema(db);
 
         if (!db.Settings.Any()) { db.Settings.Add(new CommunitySettings()); db.SaveChanges(); }
         // Remove the original starter suggestions, retaining any already used on houses.

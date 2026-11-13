@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HousingCommunityManagement.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HousingCommunityManagement.Data", "HousingCommunityManagement.Data\HousingCommunityManagement.Data.csproj", "{C6378CA2-44FA-4287-B368-8BC857305502}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HousingCommunityManagement.DesignerChecks", "HousingCommunityManagement.DesignerChecks\HousingCommunityManagement.DesignerChecks.csproj", "{65485586-9087-4C12-ABA2-2EC80D6C33CE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -55,6 +57,18 @@ Global
 		{C6378CA2-44FA-4287-B368-8BC857305502}.Release|x64.Build.0 = Release|Any CPU
 		{C6378CA2-44FA-4287-B368-8BC857305502}.Release|x86.ActiveCfg = Release|Any CPU
 		{C6378CA2-44FA-4287-B368-8BC857305502}.Release|x86.Build.0 = Release|Any CPU
+		{65485586-9087-4C12-ABA2-2EC80D6C33CE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{65485586-9087-4C12-ABA2-2EC80D6C33CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{65485586-9087-4C12-ABA2-2EC80D6C33CE}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{65485586-9087-4C12-ABA2-2EC80D6C33CE}.Debug|x64.Build.0 = Debug|Any CPU
+		{65485586-9087-4C12-ABA2-2EC80D6C33CE}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{65485586-9087-4C12-ABA2-2EC80D6C33CE}.Debug|x86.Build.0 = Debug|Any CPU
+		{65485586-9087-4C12-ABA2-2EC80D6C33CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{65485586-9087-4C12-ABA2-2EC80D6C33CE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{65485586-9087-4C12-ABA2-2EC80D6C33CE}.Release|x64.ActiveCfg = Release|Any CPU
+		{65485586-9087-4C12-ABA2-2EC80D6C33CE}.Release|x64.Build.0 = Release|Any CPU
+		{65485586-9087-4C12-ABA2-2EC80D6C33CE}.Release|x86.ActiveCfg = Release|Any CPU
+		{65485586-9087-4C12-ABA2-2EC80D6C33CE}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,0 +1,132 @@
+#nullable enable
+namespace HousingCommunityManagement;
+partial class BankReconciliationsView
+{
+    private DataGridView grid = null !;
+    private System.ComponentModel.IContainer? components = null;
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) components?.Dispose();
+        base.Dispose(disposing);
+    }
+    private DataGridViewTextBoxColumn gridNumberColumn = null!;
+    private DataGridViewTextBoxColumn gridAccountColumn = null!;
+    private DataGridViewTextBoxColumn gridFromColumn = null!;
+    private DataGridViewTextBoxColumn gridToColumn = null!;
+    private DataGridViewTextBoxColumn gridOpeningColumn = null!;
+    private DataGridViewTextBoxColumn gridClosingColumn = null!;
+    private DataGridViewTextBoxColumn gridStatusColumn = null!;
+    private void InitializeComponent()
+    {
+        SuspendLayout();
+        toolbar = new FlowLayoutPanel();
+        toolbar.Name = "toolbar";
+        actionButton = new Button();
+        actionButton.Text = "New statement...";
+        actionButton.AutoSize = true;
+        actionButton.Name = "actionButton";
+        actionButton.Click += NewClicked;
+        toolbar.Controls.Add(actionButton);
+        actionButton1 = new Button();
+        actionButton1.Text = "Open statement...";
+        actionButton1.AutoSize = true;
+        actionButton1.Name = "actionButton1";
+        actionButton1.Click += OpenClicked;
+        toolbar.Controls.Add(actionButton1);
+        actionButton2 = new Button();
+        actionButton2.Text = "Delete unfinished...";
+        actionButton2.AutoSize = true;
+        actionButton2.Name = "actionButton2";
+        actionButton2.Click += DeleteClicked;
+        toolbar.Controls.Add(actionButton2);
+        actionButton3 = new Button();
+        actionButton3.Text = "Refresh";
+        actionButton3.AutoSize = true;
+        actionButton3.Name = "actionButton3";
+        actionButton3.Click += RefreshClicked;
+        toolbar.Controls.Add(actionButton3);
+        grid = new DataGridView();
+        grid.Dock = DockStyle.Fill;
+        grid.BackgroundColor = Color.White;
+        grid.ReadOnly = true;
+        grid.AllowUserToAddRows = false;
+        grid.AllowUserToDeleteRows = false;
+        grid.RowHeadersVisible = false;
+        grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+        grid.MultiSelect = false;
+        grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.DisplayedCells;
+        grid.Name = "grid";
+        pageLayout = new TableLayoutPanel();
+        pageLayout.Dock = DockStyle.Fill;
+        pageLayout.Padding = new Padding(16);
+        pageLayout.ColumnCount = 1;
+        pageLayout.RowCount = 5;
+        pageLayout.Name = "pageLayout";
+        pageLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        pageLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        pageLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
+        pageLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+        pageLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        pageLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 65));
+        headingLabel = new Label();
+        headingLabel.Text = "Bank reconciliation";
+        headingLabel.Font = new Font("Segoe UI", 18, FontStyle.Bold);
+        headingLabel.Dock = DockStyle.Fill;
+        headingLabel.UseMnemonic = false;
+        headingLabel.Name = "headingLabel";
+        noteLabel = new Label();
+        noteLabel.Text = "Match imported statement lines with existing ledger entries. Matching never posts money. The first statement opening must agree with the ledger; subsequent statements continue from the previous finalized statement. Use this for bank accounts or a cashbook statement for cash accounts.";
+        noteLabel.Dock = DockStyle.Fill;
+        noteLabel.UseMnemonic = false;
+        noteLabel.Name = "noteLabel";
+        footerLabel = new Label();
+        footerLabel.Dock = DockStyle.Fill;
+        footerLabel.Name = "footerLabel";
+        toolbar.Dock = DockStyle.Fill;
+        toolbar.AutoScroll = true;
+        toolbar.WrapContents = true;
+        pageLayout.Controls.Add(headingLabel, 0, 0);
+        pageLayout.Controls.Add(noteLabel, 0, 1);
+        pageLayout.Controls.Add(toolbar, 0, 2);
+        pageLayout.Controls.Add(grid, 0, 3);
+        pageLayout.Controls.Add(footerLabel, 0, 4);
+        Controls.Add(pageLayout);
+        Dock = DockStyle.Fill;
+        Name = "BankReconciliationsView";
+        AutoScaleDimensions = new SizeF(7, 15);
+        AutoScaleMode = AutoScaleMode.Font;
+        gridNumberColumn = new DataGridViewTextBoxColumn(); gridNumberColumn.Name = "Number"; gridNumberColumn.DataPropertyName = "Number";
+        gridNumberColumn.HeaderText = "Number";
+        gridAccountColumn = new DataGridViewTextBoxColumn(); gridAccountColumn.Name = "Account"; gridAccountColumn.DataPropertyName = "Account";
+        gridAccountColumn.HeaderText = "Account";
+        gridFromColumn = new DataGridViewTextBoxColumn(); gridFromColumn.Name = "From"; gridFromColumn.DataPropertyName = "From";
+        gridFromColumn.HeaderText = "From";
+        gridFromColumn.MinimumWidth = 110;
+        gridToColumn = new DataGridViewTextBoxColumn(); gridToColumn.Name = "To"; gridToColumn.DataPropertyName = "To";
+        gridToColumn.HeaderText = "To";
+        gridToColumn.MinimumWidth = 110;
+        gridOpeningColumn = new DataGridViewTextBoxColumn(); gridOpeningColumn.Name = "Opening"; gridOpeningColumn.DataPropertyName = "Opening";
+        gridOpeningColumn.HeaderText = "Opening";
+        gridOpeningColumn.DefaultCellStyle.Format = "N2";
+        gridClosingColumn = new DataGridViewTextBoxColumn(); gridClosingColumn.Name = "Closing"; gridClosingColumn.DataPropertyName = "Closing";
+        gridClosingColumn.HeaderText = "Closing";
+        gridClosingColumn.DefaultCellStyle.Format = "N2";
+        gridStatusColumn = new DataGridViewTextBoxColumn(); gridStatusColumn.Name = "Status"; gridStatusColumn.DataPropertyName = "Status";
+        gridStatusColumn.HeaderText = "Status";
+        grid.AutoGenerateColumns = false;
+        grid.Columns.AddRange(new DataGridViewColumn[] { gridNumberColumn, gridAccountColumn, gridFromColumn, gridToColumn, gridOpeningColumn, gridClosingColumn, gridStatusColumn });
+
+        ResumeLayout(false);
+        PerformLayout();
+    }
+
+    private FlowLayoutPanel toolbar = null !;
+    private Button actionButton = null !;
+    private Button actionButton1 = null !;
+    private Button actionButton2 = null !;
+    private Button actionButton3 = null !;
+    private TableLayoutPanel pageLayout = null !;
+    private Label headingLabel = null !;
+    private Label noteLabel = null !;
+    private Label footerLabel = null !;
+}

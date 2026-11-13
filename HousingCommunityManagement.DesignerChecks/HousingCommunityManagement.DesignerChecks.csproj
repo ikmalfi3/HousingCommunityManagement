@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net9.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><DesignerRoslynDirectory Condition="Exists('$(MSBuildToolsPath)/Roslyn/bincore/Microsoft.CodeAnalysis.dll')">$(MSBuildToolsPath)/Roslyn/bincore</DesignerRoslynDirectory><DesignerRoslynDirectory Condition="'$(DesignerRoslynDirectory)' == ''">$(MSBuildToolsPath)/Roslyn</DesignerRoslynDirectory></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../HousingCommunityManagement/HousingCommunityManagement.csproj" />
+    <Reference Include="Microsoft.CodeAnalysis"><HintPath>$(DesignerRoslynDirectory)/Microsoft.CodeAnalysis.dll</HintPath></Reference>
+    <Reference Include="Microsoft.CodeAnalysis.CSharp"><HintPath>$(DesignerRoslynDirectory)/Microsoft.CodeAnalysis.CSharp.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>

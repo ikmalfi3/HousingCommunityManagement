@@ -186,7 +186,8 @@ namespace HousingCommunityManagement
             grid.CellFormatting += GridCellFormatting;
             FormClosing += SaveColumnWidths;
             Shown += FormShown;
-            AutoScaleDimensions = new SizeF(7F, 15F);
+            Name = "HouseholdForm";
+        AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ResumeLayout(false);
         }
